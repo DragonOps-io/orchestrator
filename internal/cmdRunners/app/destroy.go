@@ -1,0 +1,228 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"github.com/DragonOps-io/api/types"
+	"github.com/DragonOps-io/orchestrator/internal/terraform"
+	"github.com/DragonOps-io/orchestrator/internal/utils"
+	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
+	"os"
+	"strings"
+)
+
+func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
+	log.Debug().
+		Str("AppID", payload.AppID).
+		Msg("Attempting to remove app")
+
+	app := types.App{}
+	o := mm.Find(&app, payload.AppID)
+	if o.Err != nil {
+		return fmt.Errorf("an error occurred when trying to find the item with id %s: %s", payload.AppID, o.Err)
+	}
+	log.Debug().Str("AppID", app.ID).Msg("Found app")
+
+	var appEnvironmentsToDestroy []types.Environment
+	for _, envId := range payload.EnvironmentIDs {
+		env := types.Environment{}
+		o = mm.Find(&env, envId)
+		if o.Err != nil {
+			return o.Err
+		}
+		appEnvironmentsToDestroy = append(appEnvironmentsToDestroy, env)
+	}
+	log.Debug().Str("AppID", app.ID).Msg("Retrieved environments to destroy")
+
+	receiptHandle := os.Getenv("RECEIPT_HANDLE")
+	if receiptHandle == "" {
+		ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
+		if ue != nil {
+			return ue
+		}
+		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
+	}
+
+	var accounts []types.Account
+	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
+	if o.Err != nil {
+		o = mm.Update(&app, "Status", "DELETE_FAILED")
+		if o.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("an error occurred when trying to find the Master Account: %s", o.Err)
+	}
+
+	log.Debug().Str("AppID", payload.AppID).Msg("Found Master Account")
+	authResponse, err := utils.IsApiKeyValid(payload.DoApiKey)
+	if err != nil {
+		aco := mm.Update(&app, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
+	}
+	if !authResponse.IsValid {
+		aco := mm.Update(&app, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+		config.WithRegion(accounts[0].AwsRegion)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
+		o.Region = accounts[0].AwsRegion
+	})
+
+	if !isDryRun {
+		os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
+
+		log.Debug().Str("AppID", app.ID).Msg("Preparing Terraform")
+		log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("The artifact path is %s", os.Getenv("DRAGONOPS_TERRAFORM_ARTIFACT")))
+
+		var execPath *string
+		execPath, err = terraform.PrepareTerraform(ctx)
+		if err != nil {
+			ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+			if ue != nil {
+				return ue
+			}
+			return err
+		}
+
+		log.Debug().Str("AppID", app.ID).Msg("Dry run is false. Running terraform")
+
+		err = formatWithWorkerAndDestroy(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToDestroy, execPath)
+		if err != nil {
+			ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+			if ue != nil {
+				return ue
+			}
+			return err
+		}
+	} else {
+		for _, env := range appEnvironmentsToDestroy {
+			appEnvConfig := app.Environments[env.ResourceLabel]
+			appEnvConfig.Status = "DESTROYED"
+			appEnvConfig.Endpoint = ""
+			app.Environments[env.ResourceLabel] = appEnvConfig
+			o = mm.Save(&app)
+			if o.Err != nil {
+				return o.Err
+			}
+			log.Debug().Str("AppID", app.ID).Msg("App environment status updated")
+		}
+	}
+
+	queueParts := strings.Split(*app.AppSqsArn, ":")
+	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
+
+	log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
+
+	_, err = sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+		QueueUrl:      &queueUrl,
+		ReceiptHandle: &receiptHandle,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func updateEnvironmentStatusesToDestroyFailed(app types.App, environmentsToApply []types.Environment, mm *magicmodel.Operator, errMsg string) error {
+	for _, env := range environmentsToApply {
+		for k, appEnvConfig := range app.Environments {
+			if env.ResourceLabel == k && appEnvConfig.Status == "DESTROYING" {
+				appEnvConfig.Status = "DESTROY_FAILED"
+				appEnvConfig.FailedReason = errMsg
+				app.Environments[k] = appEnvConfig
+			}
+		}
+	}
+	aco := mm.Update(&app, "Environments", app.Environments)
+	if aco.Err != nil {
+		return aco.Err
+	}
+	return nil
+}
+
+func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string) error {
+	log.Debug().Str("AppID", app.ID).Msg("Templating Terraform with correct values")
+	errs, ctx := errgroup.WithContext(ctx)
+
+	for _, env := range environments {
+		appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
+		command := fmt.Sprintf("/app/worker app apply --app-id %s --environment-id %s --table-region %s", app.ID, env.ID, masterAcctRegion)
+		os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", appPath)
+
+		if os.Getenv("IS_LOCAL") == "true" {
+			appPath = fmt.Sprintf("./apps/%s/%s", app.ID, env.ID)
+			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", appPath)
+			command = fmt.Sprintf("./app/worker app apply --app-id %s --environment-id %s --table-region %s", app.ID, env.ID, masterAcctRegion)
+		}
+
+		log.Debug().Str("AppID", app.ID).Msg(appPath)
+		log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Applying application files found at %s", os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION")))
+
+		log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Running command %s", command))
+		msg, err := utils.RunOSCommandOrFail(command)
+		if err != nil {
+			ue := updateEnvironmentStatusesToDestroyFailed(app, environments, mm, err.Error())
+			if ue != nil {
+				return ue
+			}
+			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+		}
+		log.Debug().Str("AppID", app.ID).Msg(*msg)
+	}
+	// run all the applies in parallel in each folder
+	for _, env := range environments {
+		errs.Go(func() error {
+			appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
+			if os.Getenv("IS_LOCAL") == "true" {
+				appPath = fmt.Sprintf("./apps/%s/%s", app.ID, env.ID)
+			}
+
+			var roleToAssume *string
+			if env.Group.Account.CrossAccountRoleArn != nil {
+				roleToAssume = env.Group.Account.CrossAccountRoleArn
+			}
+			// apply terraform or return an error
+			_, err := terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
+			if err != nil {
+				ue := updateEnvironmentStatusesToDestroyFailed(app, environments, mm, err.Error())
+				if ue != nil {
+					return ue
+				}
+				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+			}
+
+			log.Debug().Str("AppID", app.ID).Msg("Updating app status")
+			appEnvConfig := app.Environments[env.ResourceLabel]
+			appEnvConfig.Status = "DESTROYED"
+			appEnvConfig.Endpoint = ""
+			app.Environments[env.ResourceLabel] = appEnvConfig
+			o := mm.Save(&app)
+			if o.Err != nil {
+				return o.Err
+			}
+			log.Debug().Str("AppID", app.ID).Msg("App status updated")
+			return nil
+		})
+	}
+	return errs.Wait()
+}
