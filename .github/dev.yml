@@ -48,5 +48,3 @@ jobs:
           ssh: default
           push: true
           provenance: false
-          build-args: |
-            GITHUB_API_REPO_PATH=$API_REPO_PATH
