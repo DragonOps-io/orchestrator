@@ -115,10 +115,19 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		}
 	} else {
 		for _, env := range appEnvironmentsToDestroy {
-			appEnvConfig := app.Environments[env.ResourceLabel]
-			appEnvConfig.Status = "DESTROYED"
-			appEnvConfig.Endpoint = ""
-			app.Environments[env.ResourceLabel] = appEnvConfig
+			for idx := range app.Environments {
+				if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
+					//if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
+					app.Environments[idx].Status = "DESTROYED"
+					app.Environments[idx].Endpoint = ""
+					//app.Environments[idx] = appEnvConfig
+				}
+			}
+
+			//appEnvConfig := app.Environments[env.ResourceLabel]
+			//appEnvConfig.Status = "DESTROYED"
+			//appEnvConfig.Endpoint = ""
+			//app.Environments[env.ResourceLabel] = appEnvConfig
 			o = mm.Save(&app)
 			if o.Err != nil {
 				return o.Err
@@ -145,13 +154,21 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 
 func updateEnvironmentStatusesToDestroyFailed(app types.App, environmentsToApply []types.Environment, mm *magicmodel.Operator, errMsg string) error {
 	for _, env := range environmentsToApply {
-		for k, appEnvConfig := range app.Environments {
-			if env.ResourceLabel == k && appEnvConfig.Status == "DESTROYING" {
-				appEnvConfig.Status = "DESTROY_FAILED"
-				appEnvConfig.FailedReason = errMsg
-				app.Environments[k] = appEnvConfig
+		for idx := range app.Environments {
+			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "DESTROYING" {
+				//if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
+				app.Environments[idx].Status = "DESTROY_FAILED"
+				app.Environments[idx].FailedReason = "errMsg"
+				//app.Environments[idx] = appEnvConfig
 			}
 		}
+		//for k, appEnvConfig := range app.Environments {
+		//	if env.ResourceLabel == k && appEnvConfig.Status == "DESTROYING" {
+		//		appEnvConfig.Status = "DESTROY_FAILED"
+		//		appEnvConfig.FailedReason = errMsg
+		//		app.Environments[k] = appEnvConfig
+		//	}
+		//}
 	}
 	aco := mm.Update(&app, "Environments", app.Environments)
 	if aco.Err != nil {
@@ -212,10 +229,17 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 			}
 
 			log.Debug().Str("AppID", app.ID).Msg("Updating app status")
-			appEnvConfig := app.Environments[env.ResourceLabel]
-			appEnvConfig.Status = "DESTROYED"
-			appEnvConfig.Endpoint = ""
-			app.Environments[env.ResourceLabel] = appEnvConfig
+			for idx := range app.Environments {
+				if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
+					app.Environments[idx].Status = "DESTROYED"
+					app.Environments[idx].Endpoint = ""
+					break
+				}
+			}
+			//appEnvConfig := app.Environments[env.ResourceLabel]
+			//appEnvConfig.Status = "DESTROYED"
+			//appEnvConfig.Endpoint = ""
+			//app.Environments[env.ResourceLabel] = appEnvConfig
 			o := mm.Save(&app)
 			if o.Err != nil {
 				return o.Err

@@ -114,10 +114,19 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 		}
 	} else {
 		for _, env := range appEnvironmentsToDestroy {
-			appEnvConfig := app.Environments[env.ResourceLabel]
-			appEnvConfig.Status = "DESTROYED"
-			appEnvConfig.Endpoint = ""
-			app.Environments[env.ResourceLabel] = appEnvConfig
+			for idx := range app.Environments {
+				if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
+					//if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
+					app.Environments[idx].Status = "DESTROYED"
+					app.Environments[idx].Endpoint = ""
+					//app.Environments[idx] = appEnvConfig
+				}
+			}
+
+			//appEnvConfig := app.Environments[env.ResourceLabel]
+			//appEnvConfig.Status = "DESTROYED"
+			//appEnvConfig.Endpoint = ""
+			//app.Environments[env.ResourceLabel] = appEnvConfig
 			o = mm.Save(&app)
 			if o.Err != nil {
 				return o.Err
