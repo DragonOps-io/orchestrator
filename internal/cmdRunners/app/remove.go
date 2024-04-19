@@ -149,7 +149,7 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 	}
 	// TODO delete the ECR Repo/images, OIDC repo entry from policy
 
-	o = mm.Delete(&app)
+	o = mm.SoftDelete(&app)
 	if o.Err != nil {
 		ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, o.Err.Error())
 		if ue != nil {

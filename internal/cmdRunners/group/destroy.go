@@ -237,7 +237,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 	for _, cluster := range clusters {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Deleting cluster %s record from DynamoDb.", cluster.Name))
-		o = mm.Delete(&cluster)
+		o = mm.SoftDelete(&cluster)
 		if o.Err != nil {
 			return o.Err
 		}
@@ -250,7 +250,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 	for _, network := range networks {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Deleting network %s record from DynamoDb.", network.Name))
-		o = mm.Delete(&network)
+		o = mm.SoftDelete(&network)
 		if o.Err != nil {
 			return o.Err
 		}
@@ -263,7 +263,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 	for _, env := range environments {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Deleting environment %s record from DynamoDb.", env.Name))
-		o = mm.Delete(&env)
+		o = mm.SoftDelete(&env)
 		if o.Err != nil {
 			return o.Err
 		}
@@ -294,7 +294,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 
 	log.Debug().Str("GroupID", group.ID).Msg("Group destroyed. Deleting record from DynamoDb.")
-	o = mm.Delete(&group)
+	o = mm.SoftDelete(&group)
 	if o.Err != nil {
 		return o.Err
 	}

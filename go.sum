@@ -1,9 +1,9 @@
 dario.cat/mergo v1.0.0 h1:AGCNq9Evsj31mOgNPcLyXc+4PNABt905YmuqPYYpBWk=
 dario.cat/mergo v1.0.0/go.mod h1:uNxQE+84aUszobStD9th8a29P2fMDhsBdgRYvZOxGmk=
-github.com/DragonOps-io/api v0.0.0-20240417203615-46032f8ef77c h1:XRYPILvWm0sugTHZghLbMf7tBitd3YkFihFF4fsv/kI=
-github.com/DragonOps-io/api v0.0.0-20240417203615-46032f8ef77c/go.mod h1:LjOgQGZ2LrD0C/7Bvaodmfy0rrgDeYbuoS4NXskOUlQ=
-github.com/Ilios-LLC/magicmodel-go v0.0.0-20240209013055-0cdda1aaa969 h1:LutueGgLOqG/R5Tq2HuoCtbMEgqedsj6V8lVrvy7dIs=
-github.com/Ilios-LLC/magicmodel-go v0.0.0-20240209013055-0cdda1aaa969/go.mod h1:r/1l7EGdskMEKwMyz5+jL5ZR40WFnfliu5OMw8euMXc=
+github.com/DragonOps-io/api v0.0.0-20240417211930-57535a832c57 h1:O0YBWxbOGpKc45cl5LWckce6Pth8f7KYp+m8ovbcyxk=
+github.com/DragonOps-io/api v0.0.0-20240417211930-57535a832c57/go.mod h1:LjOgQGZ2LrD0C/7Bvaodmfy0rrgDeYbuoS4NXskOUlQ=
+github.com/Ilios-LLC/magicmodel-go v0.0.0-20240419170255-2fdf213308e9 h1:Zxo2tjdoLGb204+hFEfGiGRb+nU64kxbAgPdXjB2Tm4=
+github.com/Ilios-LLC/magicmodel-go v0.0.0-20240419170255-2fdf213308e9/go.mod h1:r/1l7EGdskMEKwMyz5+jL5ZR40WFnfliu5OMw8euMXc=
 github.com/Microsoft/go-winio v0.6.1 h1:9/kr64B9VUZrLm5YYwbGtUJnMgqWVOdUAXu6Migciow=
 github.com/Microsoft/go-winio v0.6.1/go.mod h1:LRdKpFKfdobln8UmuiYcKPot9D2v6svN5+sAH+4kjUM=
 github.com/ProtonMail/go-crypto v0.0.0-20230717121422-5aa5874ade95 h1:KLq8BE0KwCL+mmXnjLWEAOYO+2l2AE4YMmqG1ZpZHBs=
