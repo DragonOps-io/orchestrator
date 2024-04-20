@@ -151,11 +151,12 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 func updateEnvironmentStatusesToApplyFailed(app types.App, environmentsToApply []types.Environment, mm *magicmodel.Operator, err error) error {
 	for _, env := range environmentsToApply {
-		for k, appEnvConfig := range app.Environments {
-			if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
-				appEnvConfig.Status = "APPLY_FAILED"
-				appEnvConfig.FailedReason = err.Error()
-				app.Environments[k] = appEnvConfig
+		for idx := range app.Environments {
+			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "APPLYING" {
+				//if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
+				app.Environments[idx].Status = "APPLY_FAILED"
+				app.Environments[idx].FailedReason = err.Error()
+				//app.Environments[idx] = appEnvConfig
 			}
 		}
 	}
@@ -168,12 +169,20 @@ func updateEnvironmentStatusesToApplyFailed(app types.App, environmentsToApply [
 
 func updateEnvironmentStatusesToApplied(app types.App, environmentsToApply []types.Environment, mm *magicmodel.Operator) error {
 	for _, env := range environmentsToApply {
-		for k, appEnvConfig := range app.Environments {
-			if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
-				appEnvConfig.Status = "APPLIED"
-				app.Environments[k] = appEnvConfig
+		for idx := range app.Environments {
+			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "APPLYING" {
+				//if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
+				app.Environments[idx].Status = "APPLIED"
+				//app.Environments[idx] = appEnvConfig
 			}
 		}
+
+		//for k, appEnvConfig := range app.Environments {
+		//	if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
+		//		appEnvConfig.Status = "APPLIED"
+		//		app.Environments[k] = appEnvConfig
+		//	}
+		//}
 	}
 	aco := mm.Update(&app, "Environments", app.Environments)
 	if aco.Err != nil {
@@ -234,15 +243,28 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			}
 
 			log.Debug().Str("AppID", app.ID).Msg("Updating app status")
-			appEnvConfig := app.Environments[env.ResourceLabel]
-			appEnvConfig.Status = "APPLIED"
+			// get matching environment
 
-			var appUrl AppUrl
-			if err = json.Unmarshal(out["app_url"].Value, &appUrl); err != nil {
-				fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
+			for idx := range app.Environments {
+				if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
+					app.Environments[idx].Status = "APPLIED"
+					var appUrl AppUrl
+					if err = json.Unmarshal(out["app_url"].Value, &appUrl); err != nil {
+						fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
+					}
+					app.Environments[idx].Endpoint = string(appUrl)
+					break
+				}
 			}
-			appEnvConfig.Endpoint = string(appUrl)
-			app.Environments[env.ResourceLabel] = appEnvConfig
+			//appEnvConfig := app.Environments[env.ResourceLabel]
+			//appEnvConfig.Status = "APPLIED"
+
+			//var appUrl AppUrl
+			//if err = json.Unmarshal(out["app_url"].Value, &appUrl); err != nil {
+			//	fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
+			//}
+			//appEnvConfig.Endpoint = string(appUrl)
+			//app.Environments[env.ResourceLabel] = appEnvConfig
 			o := mm.Save(&app)
 			if o.Err != nil {
 				return o.Err

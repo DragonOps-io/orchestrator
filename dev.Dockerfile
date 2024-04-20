@@ -1,6 +1,5 @@
 FROM golang:1.21-alpine as build
 
-ARG GITHUB_API_REPO_PATH
 ENV GOPRIVATE="github.com/DragonOps-io/*"
 RUN apk add --no-cache file git rsync openssh-client
 RUN mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts

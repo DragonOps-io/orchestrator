@@ -1,5 +1,5 @@
 orchestrator
 groups/
 .idea/
-.DS_Store/
+.DS_Store
 app/
