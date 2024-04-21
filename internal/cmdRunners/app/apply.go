@@ -171,18 +171,9 @@ func updateEnvironmentStatusesToApplied(app types.App, environmentsToApply []typ
 	for _, env := range environmentsToApply {
 		for idx := range app.Environments {
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "APPLYING" {
-				//if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
 				app.Environments[idx].Status = "APPLIED"
-				//app.Environments[idx] = appEnvConfig
 			}
 		}
-
-		//for k, appEnvConfig := range app.Environments {
-		//	if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
-		//		appEnvConfig.Status = "APPLIED"
-		//		app.Environments[k] = appEnvConfig
-		//	}
-		//}
 	}
 	aco := mm.Update(&app, "Environments", app.Environments)
 	if aco.Err != nil {
