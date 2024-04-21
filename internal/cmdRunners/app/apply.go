@@ -247,15 +247,6 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 					break
 				}
 			}
-			//appEnvConfig := app.Environments[env.ResourceLabel]
-			//appEnvConfig.Status = "APPLIED"
-
-			//var appUrl AppUrl
-			//if err = json.Unmarshal(out["app_url"].Value, &appUrl); err != nil {
-			//	fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
-			//}
-			//appEnvConfig.Endpoint = string(appUrl)
-			//app.Environments[env.ResourceLabel] = appEnvConfig
 			o := mm.Save(&app)
 			if o.Err != nil {
 				return o.Err
