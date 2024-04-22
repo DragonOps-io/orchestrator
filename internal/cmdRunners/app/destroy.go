@@ -151,7 +151,7 @@ func updateEnvironmentStatusesToDestroyFailed(app types.App, environmentsToApply
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "DESTROYING" {
 				//if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
 				app.Environments[idx].Status = "DESTROY_FAILED"
-				app.Environments[idx].FailedReason = "errMsg"
+				app.Environments[idx].FailedReason = errMsg
 				//app.Environments[idx] = appEnvConfig
 			}
 		}
