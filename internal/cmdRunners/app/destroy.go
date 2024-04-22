@@ -155,13 +155,6 @@ func updateEnvironmentStatusesToDestroyFailed(app types.App, environmentsToApply
 				//app.Environments[idx] = appEnvConfig
 			}
 		}
-		//for k, appEnvConfig := range app.Environments {
-		//	if env.ResourceLabel == k && appEnvConfig.Status == "DESTROYING" {
-		//		appEnvConfig.Status = "DESTROY_FAILED"
-		//		appEnvConfig.FailedReason = errMsg
-		//		app.Environments[k] = appEnvConfig
-		//	}
-		//}
 	}
 	aco := mm.Update(&app, "Environments", app.Environments)
 	if aco.Err != nil {
