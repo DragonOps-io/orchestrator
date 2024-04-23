@@ -105,7 +105,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	})
 
 	var groupClusters []types.Cluster
-	o = mm.Where(&groupClusters, "GroupID", group.ID)
+	o = mm.Where(&groupClusters, "Group.ID", group.ID)
 	if o.Err != nil {
 		po := mm.Update(&group, "Status", "APPLY_FAILED")
 		if po.Err != nil {
