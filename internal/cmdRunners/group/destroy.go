@@ -231,7 +231,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	// Get all clusters, networks, and environments where GroupID is X and delete them
 	log.Debug().Str("GroupID", group.ID).Msg("Retrieving all cluster, network and environment records to delete.")
 	var clusters []types.Cluster
-	o = mm.Where(&clusters, "GroupID", group.ID)
+	o = mm.Where(&clusters, "Group.ID", group.ID)
 	if o.Err != nil {
 		return o.Err
 	}
@@ -244,7 +244,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 
 	var networks []types.Network
-	o = mm.Where(&networks, "GroupID", group.ID)
+	o = mm.Where(&networks, "Group.ID", group.ID)
 	if o.Err != nil {
 		return o.Err
 	}
@@ -257,7 +257,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 
 	var environments []types.Environment
-	o = mm.Where(&environments, "GroupID", group.ID)
+	o = mm.Where(&environments, "Group.ID", group.ID)
 	if o.Err != nil {
 		return o.Err
 	}
