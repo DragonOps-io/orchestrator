@@ -145,7 +145,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	// TODO github.com/aws/aws-sdk-go-v2/service/organizations --> to get the organization. if we don't have an organization.... i guess we can update the policy by getting it first, then adding the target account id to it.
 	// so, 1. check for org. if exists, all good. set flag on master account saying IsOrganization
 	// 2. if doesn't exist/not an org, set flag saying IsOrganization is false, see if target account is master account. If yes, just have policy say master account can pull. If NO, have policy saying master account & target account can pull
-	// 3. every time we deply to a new group, need to do this check if IsOrganization is false.
+	// 3. every time we deploy to a new group, need to do this check if IsOrganization is false.
 	return nil
 }
 
