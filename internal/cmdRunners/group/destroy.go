@@ -132,11 +132,12 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 
 	if !isDryRun {
-		os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
 		if os.Getenv("IS_LOCAL") == "true" {
 			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", fmt.Sprintf("./groups/%s", group.ID))
+			os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "./app/tmpl.tgz.age")
 		} else {
 			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", fmt.Sprintf("/groups/%s", group.ID))
+			os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
 		}
 
 		log.Debug().Str("GroupID", group.ID).Msg("Preparing Terraform")
@@ -462,20 +463,23 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying all %ss", dirName))
-
+	// directoeis is the directory full of clusters
 	// run all the applies in parallel in each folder
 	for _, d := range directories {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying %s %s", dirName, d.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
-		errs.Go(func() error {
+		var g *errgroup.Group
+		g, ctx = errgroup.WithContext(ctx)
+		g.Go(func() error {
 			// the directory name had cluster in it, we need to loop through and delete instances
 			//has /cluster resource label and i know the group
 			// d.Name() == /groups/groupId/cluster/clusterResourceLabel
-			if strings.Contains(d.Name(), "cluster") && !strings.Contains(d.Name(), "cluster_grafana") {
-				clusterResourceLabel := strings.Split(d.Name(), "/")[4]
+			if strings.Contains(path, "cluster") && !strings.Contains(path, "cluster_grafana") {
+				fmt.Println(d.Name())
+				clusterResourceLabel := strings.Split(strings.Split(path, "/groups/")[1], "/")[2]
 				// setup the client before the go routine?
-				ec2Client := ec2.NewFromConfig(cfg)
-				tagClient := resourcegroupstaggingapi.NewFromConfig(cfg)
+				ec2Client := ec2.NewFromConfig(cfg, func(o *ec2.Options) { o.Region = cfg.Region })
+				tagClient := resourcegroupstaggingapi.NewFromConfig(cfg, func(o *resourcegroupstaggingapi.Options) { o.Region = cfg.Region })
 				// get the cluster so we have the name
 				var clusters []types.Cluster
 				var cluster *types.Cluster
@@ -512,18 +516,19 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 							if o.Err != nil {
 								return o.Err
 							}
+							return err
 						}
 						for _, value := range output.SecurityGroups {
 							sgIds = append(sgIds, *value.GroupId)
 						}
 					}
 					pageNum++
-					if len(sgIds) != 1 {
+					if len(sgIds) > 1 || len(sgIds) < 1 {
 						log.Warn().Str("GroupID", group.ID).Msg("either the security group was not found to delete or there were more than one returned.")
 					} else {
 						// delete
 						_, err := ec2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
-							GroupId: &sgIds[1],
+							GroupId: &sgIds[0],
 						})
 						if err != nil {
 							o := mm.Update(&group, "Status", "DESTROY_FAILED")
@@ -538,9 +543,14 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 						}
 
 					}
-					errs.Go(func() error {
-						time.Sleep(30 * time.Second)
-						deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, *ec2Client, *tagClient)
+					g.Go(func() error {
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						default:
+							time.Sleep(30 * time.Second)
+							deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, *ec2Client, *tagClient)
+						}
 						return nil
 					})
 				}
@@ -586,7 +596,8 @@ func deleteSpotInstances(ctx context.Context, groupName string, groupId string, 
 		if err != nil {
 			// TODO what do i want to do here?
 			log.Warn().Str("GroupID", groupId).Msg(err.Error())
-
+			err = nil
+			continue
 		}
 		for _, value := range output.ResourceTagMappingList {
 			// arn:aws:ec2:us-east-1:123456789012:instance/i-012abcd34efghi56
@@ -594,12 +605,15 @@ func deleteSpotInstances(ctx context.Context, groupName string, groupId string, 
 		}
 		pageNum++
 	}
-	_, err := client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
-		InstanceIds: instanceIds,
-	})
-	if err != nil {
-		// TODO what do we want to do here? need to handle all the different cases?
-		log.Warn().Str("GroupID", groupId).Msg(err.Error())
+	if len(instanceIds) > 0 {
+		_, err := client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+			InstanceIds: instanceIds,
+		})
+		if err != nil {
+			// TODO what do we want to do here? need to handle all the different cases?
+			log.Warn().Str("GroupID", groupId).Msg(err.Error())
+			err = nil
+		}
 	}
 	time.Sleep(30 * time.Second)
 	deleteSpotInstances(ctx, groupName, groupId, clusterName, client, taggingClient)
