@@ -555,7 +555,7 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 					})
 				}
 			}
-
+			// test
 			// destroy terraform or return an error
 			log.Debug().Str("GroupID", group.ID).Msg(path)
 			_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
