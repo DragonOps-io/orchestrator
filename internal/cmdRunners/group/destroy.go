@@ -471,7 +471,7 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 			// the directory name had cluster in it, we need to loop through and delete instances
 			//has /cluster resource label and i know the group
 			// d.Name() == /groups/groupId/cluster/clusterResourceLabel
-			if strings.Contains(d.Name(), "cluster") {
+			if strings.Contains(d.Name(), "cluster") && !strings.Contains(d.Name(), "cluster_grafana") {
 				clusterResourceLabel := strings.Split(d.Name(), "/")[4]
 				// setup the client before the go routine?
 				ec2Client := ec2.NewFromConfig(cfg)
