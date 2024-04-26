@@ -12,6 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
+	tagTypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	r53Types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -25,6 +29,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
@@ -93,46 +98,8 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		roleToAssume = group.Account.CrossAccountRoleArn
 	}
 
-	if !isDryRun {
-		os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
-		if os.Getenv("IS_LOCAL") == "true" {
-			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", fmt.Sprintf("./groups/%s", group.ID))
-		} else {
-			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", fmt.Sprintf("/groups/%s", group.ID))
-		}
-
-		log.Debug().Str("GroupID", group.ID).Msg("Preparing Terraform")
-		var execPath *string
-		execPath, err = terraform.PrepareTerraform(ctx)
-		if err != nil {
-			o = mm.Update(&group, "Status", "DESTROY_FAILED")
-			if o.Err != nil {
-				return o.Err
-			}
-			o = mm.Update(&group, "FailedReason", err.Error())
-			if o.Err != nil {
-				return o.Err
-			}
-			return err
-		}
-
-		err = formatWithWorkerAndDestroy(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume)
-		if err != nil {
-			o = mm.Update(&group, "Status", "DESTROY_FAILED")
-			if o.Err != nil {
-				return o.Err
-			}
-			o = mm.Update(&group, "FailedReason", err.Error())
-			if o.Err != nil {
-				return o.Err
-			}
-			return err
-		}
-	}
-
-	log.Debug().Str("GroupID", group.ID).Msg("Finished destroying group Terraform! Cleaning up other resources now.")
-
-	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+	var cfg aws.Config
+	cfg, err = config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
 		config.WithRegion(accounts[0].AwsRegion)
 		return nil
 	})
@@ -163,6 +130,45 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 			return err
 		}
 	}
+
+	if !isDryRun {
+		os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
+		if os.Getenv("IS_LOCAL") == "true" {
+			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", fmt.Sprintf("./groups/%s", group.ID))
+		} else {
+			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", fmt.Sprintf("/groups/%s", group.ID))
+		}
+
+		log.Debug().Str("GroupID", group.ID).Msg("Preparing Terraform")
+		var execPath *string
+		execPath, err = terraform.PrepareTerraform(ctx)
+		if err != nil {
+			o = mm.Update(&group, "Status", "DESTROY_FAILED")
+			if o.Err != nil {
+				return o.Err
+			}
+			o = mm.Update(&group, "FailedReason", err.Error())
+			if o.Err != nil {
+				return o.Err
+			}
+			return err
+		}
+
+		err = formatWithWorkerAndDestroy(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, cfg)
+		if err != nil {
+			o = mm.Update(&group, "Status", "DESTROY_FAILED")
+			if o.Err != nil {
+				return o.Err
+			}
+			o = mm.Update(&group, "FailedReason", err.Error())
+			if o.Err != nil {
+				return o.Err
+			}
+			return err
+		}
+	}
+
+	log.Debug().Str("GroupID", group.ID).Msg("Finished destroying group Terraform! Cleaning up other resources now.")
 
 	if group.DragonOpsRoute53 != nil {
 		route53Client := route53.NewFromConfig(cfg, func(o *route53.Options) {
@@ -369,7 +375,7 @@ func getCrossAccountConfig(ctx context.Context, cfg aws.Config, roleToAssumeArn 
 	return assumeRoleCfg, nil
 }
 
-func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string) error {
+func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config) error {
 	log.Debug().Str("GroupID", group.ID).Msg("Templating Terraform with correct values")
 
 	command := fmt.Sprintf("/app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
@@ -394,7 +400,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 	log.Debug().Str("GroupID", group.ID).Msg("Destroying group Terraform")
 	// can't use a for loop because we need to do it in order
 	// destroy environments all together
-	err = destroy(ctx, mm, group, execPath, roleToAssume, "environment")
+	err = destroy(ctx, mm, group, execPath, roleToAssume, "environment", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if o.Err != nil {
@@ -408,7 +414,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 	}
 
 	// destroy cluster grafana all together
-	err = destroy(ctx, mm, group, execPath, roleToAssume, "cluster_grafana")
+	err = destroy(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if o.Err != nil {
@@ -422,7 +428,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 	}
 
 	// destroy clusters all together
-	err = destroy(ctx, mm, group, execPath, roleToAssume, "cluster")
+	err = destroy(ctx, mm, group, execPath, roleToAssume, "cluster", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if o.Err != nil {
@@ -434,9 +440,8 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 		}
 		return fmt.Errorf("Error running destroy for cluster stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
-
 	// destroy all networks together
-	err = destroy(ctx, mm, group, execPath, roleToAssume, "network")
+	err = destroy(ctx, mm, group, execPath, roleToAssume, "network", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if o.Err != nil {
@@ -452,7 +457,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 	return nil
 }
 
-func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string) error {
+func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config) error {
 	errs, ctx := errgroup.WithContext(ctx)
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
@@ -463,6 +468,84 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying %s %s", dirName, d.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
 		errs.Go(func() error {
+			// the directory name had cluster in it, we need to loop through and delete instances
+			//has /cluster resource label and i know the group
+			// d.Name() == /groups/groupId/cluster/clusterResourceLabel
+			if strings.Contains(d.Name(), "cluster") {
+				clusterResourceLabel := strings.Split(d.Name(), "/")[4]
+				// setup the client before the go routine?
+				ec2Client := ec2.NewFromConfig(cfg)
+				tagClient := resourcegroupstaggingapi.NewFromConfig(cfg)
+				// get the cluster so we have the name
+				var clusters []types.Cluster
+				var cluster *types.Cluster
+				mm.Where(&clusters, "ResourceLabel", clusterResourceLabel)
+				for idx := range clusters {
+					if clusters[idx].Group.ResourceLabel == group.ResourceLabel {
+						cluster = &clusters[idx]
+					}
+				}
+				if cluster == nil {
+					// cluster not found what then?
+					log.Warn().Str("GroupID", group.ID).Msg("cluster not found and cannot delete spot instances")
+				} else {
+					// delete problem security groupt and spot instances
+					paginator := ec2.NewDescribeSecurityGroupsPaginator(ec2Client, &ec2.DescribeSecurityGroupsInput{
+						Filters: []ec2Types.Filter{{
+							Name:   aws.String("tag:aws:eks:cluster-name"),
+							Values: []string{fmt.Sprintf("%s-%s", group.Name, cluster.Name)},
+						}},
+					}, func(o *ec2.DescribeSecurityGroupsPaginatorOptions) {
+						o.StopOnDuplicateToken = true
+					})
+
+					pageNum := 0
+					var sgIds []string
+					for paginator.HasMorePages() {
+						output, err := paginator.NextPage(ctx)
+						if err != nil {
+							o := mm.Update(&group, "Status", "DESTROY_FAILED")
+							if o.Err != nil {
+								return o.Err
+							}
+							o = mm.Update(&group, "FailedReason", err.Error())
+							if o.Err != nil {
+								return o.Err
+							}
+						}
+						for _, value := range output.SecurityGroups {
+							sgIds = append(sgIds, *value.GroupId)
+						}
+					}
+					pageNum++
+					if len(sgIds) != 1 {
+						log.Warn().Str("GroupID", group.ID).Msg("either the security group was not found to delete or there were more than one returned.")
+					} else {
+						// delete
+						_, err := ec2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
+							GroupId: &sgIds[1],
+						})
+						if err != nil {
+							o := mm.Update(&group, "Status", "DESTROY_FAILED")
+							if o.Err != nil {
+								return o.Err
+							}
+							o = mm.Update(&group, "FailedReason", err.Error())
+							if o.Err != nil {
+								return o.Err
+							}
+							return fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+						}
+
+					}
+					errs.Go(func() error {
+						time.Sleep(30 * time.Second)
+						deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, *ec2Client, *tagClient)
+						return nil
+					})
+				}
+			}
+
 			// destroy terraform or return an error
 			log.Debug().Str("GroupID", group.ID).Msg(path)
 			_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
@@ -482,4 +565,42 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 	}
 	// Wait for completion and return the first error (if any)
 	return errs.Wait()
+}
+
+func deleteSpotInstances(ctx context.Context, groupName string, groupId string, clusterName string, client ec2.Client, taggingClient resourcegroupstaggingapi.Client) {
+	// first retrieve all instances with sepcific tag
+	paginator := resourcegroupstaggingapi.NewGetResourcesPaginator(&taggingClient, &resourcegroupstaggingapi.GetResourcesInput{
+		ResourceTypeFilters: []string{"ec2:instance"},
+		TagFilters: []tagTypes.TagFilter{{
+			Key:    aws.String("aws:eks:cluster-name"),
+			Values: []string{fmt.Sprintf("%s-%s", groupName, clusterName)},
+		}},
+	}, func(o *resourcegroupstaggingapi.GetResourcesPaginatorOptions) {
+		o.StopOnDuplicateToken = true
+	})
+
+	pageNum := 0
+	var instanceIds []string
+	for paginator.HasMorePages() {
+		output, err := paginator.NextPage(ctx)
+		if err != nil {
+			// TODO what do i want to do here?
+			log.Warn().Str("GroupID", groupId).Msg(err.Error())
+
+		}
+		for _, value := range output.ResourceTagMappingList {
+			// arn:aws:ec2:us-east-1:123456789012:instance/i-012abcd34efghi56
+			instanceIds = append(instanceIds, strings.Split(*value.ResourceARN, "/")[1])
+		}
+		pageNum++
+	}
+	_, err := client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+		InstanceIds: instanceIds,
+	})
+	if err != nil {
+		// TODO what do we want to do here? need to handle all the different cases?
+		log.Warn().Str("GroupID", groupId).Msg(err.Error())
+	}
+	time.Sleep(30 * time.Second)
+	deleteSpotInstances(ctx, groupName, groupId, clusterName, client, taggingClient)
 }
