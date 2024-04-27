@@ -1,3 +1,4 @@
+name: build-preprod
 on:
   push:
     branches:
