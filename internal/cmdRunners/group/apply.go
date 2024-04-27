@@ -384,7 +384,7 @@ func saveGrafanaCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexe
 			}
 			for _, cluster := range clusters {
 				if cluster.ResourceLabel == clusterResourceLabel {
-					cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{DomainName: endpoint.GrafanaUrl}
+					cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: endpoint.GrafanaUrl}
 					o = mm.Update(&cluster, "Metadata", cluster.Metadata)
 					if o.Err != nil {
 						return o.Err
@@ -438,7 +438,7 @@ func saveArgoCdCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec
 			}
 			for _, cluster := range clusters {
 				if cluster.ResourceLabel == clusterResourceLabel {
-					cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{DomainName: endpoint.ArgoCdUrl}
+					cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{RootDomain: endpoint.ArgoCdUrl}
 					o = mm.Update(&cluster, "Metadata", cluster.Metadata)
 					if o.Err != nil {
 						return o.Err

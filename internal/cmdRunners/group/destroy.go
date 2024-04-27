@@ -221,7 +221,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		}
 
 		log.Debug().Str("GroupID", group.ID).Msg("Deleting name servers from DragonOps.")
-		err = deleteNameServersFromDragonOps(payload.DoApiKey, authResponse.MasterAccountAccessRoleArn, authResponse.MasterAccountRegion, authResponse.Team, group.DragonOpsRoute53.NameServers, group.DragonOpsRoute53.DomainName)
+		err = deleteNameServersFromDragonOps(payload.DoApiKey, authResponse.MasterAccountAccessRoleArn, authResponse.MasterAccountRegion, authResponse.Team, group.DragonOpsRoute53.NameServers, group.DragonOpsRoute53.RootDomain)
 		if err != nil {
 			o = mm.Update(&group, "Status", "DESTROY_FAILED")
 			if o.Err != nil {
