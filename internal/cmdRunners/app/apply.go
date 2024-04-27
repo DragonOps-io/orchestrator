@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 	"os"
 	"strings"
 )
@@ -184,7 +183,7 @@ func updateEnvironmentStatusesToApplied(app types.App, environmentsToApply []typ
 
 func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string) error {
 	log.Debug().Str("AppID", app.ID).Msg("Templating Terraform with correct values")
-	errs, ctx := errgroup.WithContext(ctx)
+	//errs, ctx := errgroup.WithContext(ctx)
 
 	for _, env := range environments {
 		appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
@@ -210,50 +209,51 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
 		log.Debug().Str("AppID", app.ID).Msg(*msg)
-	}
+		//}
 
-	for _, env := range environments {
-		errs.Go(func() error {
-			appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
-			if os.Getenv("IS_LOCAL") == "true" {
-				appPath = fmt.Sprintf("./apps/%s/%s", app.ID, env.ID)
+		//for _, env := range environments {
+		//	errs.Go(func() error {
+		//appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
+		//if os.Getenv("IS_LOCAL") == "true" {
+		//	appPath = fmt.Sprintf("./apps/%s/%s", app.ID, env.ID)
+		//}
+
+		var roleToAssume *string
+		if env.Group.Account.CrossAccountRoleArn != nil {
+			roleToAssume = env.Group.Account.CrossAccountRoleArn
+		}
+
+		out, err := terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
+		if err != nil {
+			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+			if ue != nil {
+				return ue
 			}
+			return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+		}
 
-			var roleToAssume *string
-			if env.Group.Account.CrossAccountRoleArn != nil {
-				roleToAssume = env.Group.Account.CrossAccountRoleArn
-			}
+		log.Debug().Str("AppID", app.ID).Msg("Updating app status")
+		// get matching environment
 
-			out, err := terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
-			if err != nil {
-				ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
-				if ue != nil {
-					return ue
+		for idx := range app.Environments {
+			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
+				app.Environments[idx].Status = "APPLIED"
+				var appUrl AppUrl
+				if err = json.Unmarshal(out["app_url"].Value, &appUrl); err != nil {
+					fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
 				}
-				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+				app.Environments[idx].Endpoint = string(appUrl)
+				break
 			}
-
-			log.Debug().Str("AppID", app.ID).Msg("Updating app status")
-			// get matching environment
-
-			for idx := range app.Environments {
-				if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
-					app.Environments[idx].Status = "APPLIED"
-					var appUrl AppUrl
-					if err = json.Unmarshal(out["app_url"].Value, &appUrl); err != nil {
-						fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
-					}
-					app.Environments[idx].Endpoint = string(appUrl)
-					break
-				}
-			}
-			o := mm.Save(&app)
-			if o.Err != nil {
-				return o.Err
-			}
-			log.Debug().Str("AppID", app.ID).Msg("App status updated")
-			return nil
-		})
+		}
+		o := mm.Save(&app)
+		if o.Err != nil {
+			return o.Err
+		}
+		log.Debug().Str("AppID", app.ID).Msg("App status updated")
+		//})
 	}
-	return errs.Wait()
+	return nil
+
+	//return errs.Wait()
 }
