@@ -6,7 +6,7 @@ go 1.21.5
 //replace github.com/DragonOps-io/api => ../dragonops/api
 
 require (
-	github.com/DragonOps-io/api v0.0.0-20240427221657-9341ea285f43
+	github.com/DragonOps-io/api v0.0.0-20240428183202-ca210451bc3b
 	github.com/Ilios-LLC/magicmodel-go v0.0.0-20240419170255-2fdf213308e9
 	github.com/aws/aws-sdk-go-v2 v1.26.1
 	github.com/aws/aws-sdk-go-v2/config v1.26.3
