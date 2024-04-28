@@ -1,4 +1,6 @@
+name: build-preprod
 on:
+  workflow_dispatch:
   push:
     branches:
       - prod

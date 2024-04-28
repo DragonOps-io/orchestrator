@@ -267,6 +267,34 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		}
 		return fmt.Errorf("Error running apply for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
+
+	// apply static environments all together
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static")
+	if err != nil {
+		o := mm.Update(&group, "Status", "APPLY_FAILED")
+		if o.Err != nil {
+			return o.Err
+		}
+		o = mm.Update(&group, "FailedReason", err.Error())
+		if o.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("Error running apply for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	}
+
+	// apply environments all together
+	err = apply(ctx, mm, group, execPath, roleToAssume, "rds")
+	if err != nil {
+		o := mm.Update(&group, "Status", "APPLY_FAILED")
+		if o.Err != nil {
+			return o.Err
+		}
+		o = mm.Update(&group, "FailedReason", err.Error())
+		if o.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("Error running apply for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	}
 	return nil
 }
 
@@ -370,7 +398,7 @@ func saveGrafanaCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexe
 			}
 			for _, cluster := range clusters {
 				if cluster.ResourceLabel == clusterResourceLabel {
-					cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{DomainName: endpoint.GrafanaUrl}
+					cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: endpoint.GrafanaUrl}
 					o = mm.Update(&cluster, "Metadata", cluster.Metadata)
 					if o.Err != nil {
 						return o.Err
@@ -424,7 +452,7 @@ func saveArgoCdCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec
 			}
 			for _, cluster := range clusters {
 				if cluster.ResourceLabel == clusterResourceLabel {
-					cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{DomainName: endpoint.ArgoCdUrl}
+					cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{RootDomain: endpoint.ArgoCdUrl}
 					o = mm.Update(&cluster, "Metadata", cluster.Metadata)
 					if o.Err != nil {
 						return o.Err
