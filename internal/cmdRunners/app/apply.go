@@ -171,6 +171,7 @@ func updateEnvironmentStatusesToApplied(app types.App, environmentsToApply []typ
 		for idx := range app.Environments {
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "APPLYING" {
 				app.Environments[idx].Status = "APPLIED"
+				app.Environments[idx].FailedReason = ""
 			}
 		}
 	}
