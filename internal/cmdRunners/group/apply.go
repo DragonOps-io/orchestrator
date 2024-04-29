@@ -167,6 +167,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	if o.Err != nil {
 		return o.Err
 	}
+	o = mm.Update(&group, "FailedReason", "")
+	if o.Err != nil {
+		return o.Err
+	}
 
 	log.Debug().Str("GroupID", group.ID).Msg("Finished applying group!")
 	queueParts := strings.Split(group.Account.GroupSqsArn, ":")
