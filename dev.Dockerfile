@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine as build
+FROM golang:1.22-alpine as build
 
 ENV GOPRIVATE="github.com/DragonOps-io/*"
 RUN apk add --no-cache file git rsync openssh-client
