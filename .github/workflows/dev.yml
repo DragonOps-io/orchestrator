@@ -38,7 +38,7 @@ jobs:
         uses: MrSquaare/ssh-setup-action@7bfdda6ef6839504e3a5b2625ad971b17461a0db # v3.0.0
         with:
           host: github.com
-          private-key: ${{ secrets.PRIVATE_SSH_KEY }}
+          private-key: ${{ secrets.PRIVATE_SSH_KEY_TYPES_REPO }}
           private-key-name: github-ppk
 
       - name: Build and push
