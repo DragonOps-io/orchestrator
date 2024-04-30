@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
 	"os"
 	"strings"
@@ -224,13 +225,25 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			roleToAssume = env.Group.Account.CrossAccountRoleArn
 		}
 
-		out, err := terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
-		if err != nil {
-			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
-			if ue != nil {
-				return ue
+		var out map[string]tfexec.OutputMeta
+		if app.SubType != "static" {
+			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
+			if err != nil {
+				ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+				if ue != nil {
+					return ue
+				}
+				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 			}
-			return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+		} else {
+			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application-static", appPath), *execPath, roleToAssume)
+			if err != nil {
+				ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+				if ue != nil {
+					return ue
+				}
+				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+			}
 		}
 
 		log.Debug().Str("AppID", app.ID).Msg("Updating app status")
