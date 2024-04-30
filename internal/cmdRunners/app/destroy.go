@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 	"os"
 	"strings"
 )
@@ -164,7 +163,7 @@ func updateEnvironmentStatusesToDestroyFailed(app types.App, environmentsToApply
 
 func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string) error {
 	log.Debug().Str("AppID", app.ID).Msg("Templating Terraform with correct values")
-	errs, ctx := errgroup.WithContext(ctx)
+	//errs, ctx := errgroup.WithContext(ctx)
 
 	for _, env := range environments {
 		appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
@@ -190,21 +189,22 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
 		log.Debug().Str("AppID", app.ID).Msg(*msg)
-	}
-	// run all the applies in parallel in each folder
-	for _, env := range environments {
-		errs.Go(func() error {
-			appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
-			if os.Getenv("IS_LOCAL") == "true" {
-				appPath = fmt.Sprintf("./apps/%s/%s", app.ID, env.ID)
-			}
+		//}
+		// run all the applies in parallel in each folder
+		//for _, env := range environments {
+		//errs.Go(func() error {
+		//appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
+		//if os.Getenv("IS_LOCAL") == "true" {
+		//	appPath = fmt.Sprintf("./apps/%s/%s", app.ID, env.ID)
+		//}
 
-			var roleToAssume *string
-			if env.Group.Account.CrossAccountRoleArn != nil {
-				roleToAssume = env.Group.Account.CrossAccountRoleArn
-			}
-			// apply terraform or return an error
-			_, err := terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
+		var roleToAssume *string
+		if env.Group.Account.CrossAccountRoleArn != nil {
+			roleToAssume = env.Group.Account.CrossAccountRoleArn
+		}
+		// apply terraform or return an error
+		if app.SubType != "static" {
+			_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
 			if err != nil {
 				ue := updateEnvironmentStatusesToDestroyFailed(app, environments, mm, err.Error())
 				if ue != nil {
@@ -212,26 +212,37 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 				}
 				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 			}
-
-			log.Debug().Str("AppID", app.ID).Msg("Updating app status")
-			for idx := range app.Environments {
-				if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
-					app.Environments[idx].Status = "DESTROYED"
-					app.Environments[idx].Endpoint = ""
-					break
+		} else {
+			_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application-static", appPath), *execPath, roleToAssume)
+			if err != nil {
+				ue := updateEnvironmentStatusesToDestroyFailed(app, environments, mm, err.Error())
+				if ue != nil {
+					return ue
 				}
+				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 			}
-			//appEnvConfig := app.Environments[env.ResourceLabel]
-			//appEnvConfig.Status = "DESTROYED"
-			//appEnvConfig.Endpoint = ""
-			//app.Environments[env.ResourceLabel] = appEnvConfig
-			o := mm.Save(&app)
-			if o.Err != nil {
-				return o.Err
+		}
+
+		log.Debug().Str("AppID", app.ID).Msg("Updating app status")
+		for idx := range app.Environments {
+			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
+				app.Environments[idx].Status = "DESTROYED"
+				app.Environments[idx].Endpoint = ""
+				break
 			}
-			log.Debug().Str("AppID", app.ID).Msg("App status updated")
-			return nil
-		})
+		}
+		//appEnvConfig := app.Environments[env.ResourceLabel]
+		//appEnvConfig.Status = "DESTROYED"
+		//appEnvConfig.Endpoint = ""
+		//app.Environments[env.ResourceLabel] = appEnvConfig
+		o := mm.Save(&app)
+		if o.Err != nil {
+			return o.Err
+		}
+		log.Debug().Str("AppID", app.ID).Msg("App status updated")
+		return nil
+		//})
 	}
-	return errs.Wait()
+	//return errs.Wait()
+	return nil
 }
