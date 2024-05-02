@@ -492,12 +492,12 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 						cluster = &clusters[idx]
 					}
 				}
-
 				if cluster == nil {
 					// cluster not found what then?
 					log.Warn().Str("GroupID", group.ID).Msg("cluster not found and cannot delete spot instances")
 				} else {
-					// delete problem security groupt and spot instances
+					var clusterSgId *string
+					// delete problem security group and spot instances
 					paginator := ec2.NewDescribeSecurityGroupsPaginator(ec2Client, &ec2.DescribeSecurityGroupsInput{
 						Filters: []ec2Types.Filter{{
 							Name:   aws.String("tag:aws:eks:cluster-name"),
@@ -532,25 +532,8 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 					if len(sgIds) > 1 || len(sgIds) < 1 {
 						log.Warn().Str("GroupID", group.ID).Msg("either the security group was not found to delete or there were more than one returned.")
 					} else {
-						// delete
-						_, err := ec2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
-							GroupId: &sgIds[0],
-						})
-						if err != nil {
-							o := mm.Update(&group, "Status", "DESTROY_FAILED")
-							if o.Err != nil {
-								errors <- o.Err
-								return
-							}
-							o = mm.Update(&group, "FailedReason", err.Error())
-							if o.Err != nil {
-								errors <- o.Err
-								return
-							}
-							errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
-							return
-						}
-
+						// get security group id
+						clusterSgId = &sgIds[0]
 					}
 					go func() {
 						select {
@@ -558,7 +541,7 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 							return
 						default:
 							time.Sleep(30 * time.Second)
-							deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, *ec2Client, *tagClient)
+							deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, clusterSgId, *ec2Client, *tagClient)
 						}
 						return
 					}()
@@ -595,7 +578,7 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 	return err
 }
 
-func deleteSpotInstances(ctx context.Context, groupName string, groupId string, clusterName string, client ec2.Client, taggingClient resourcegroupstaggingapi.Client) {
+func deleteSpotInstances(ctx context.Context, groupName string, groupId string, clusterName string, sgId *string, client ec2.Client, taggingClient resourcegroupstaggingapi.Client) {
 	// first retrieve all instances with sepcific tag
 	paginator := resourcegroupstaggingapi.NewGetResourcesPaginator(&taggingClient, &resourcegroupstaggingapi.GetResourcesInput{
 		ResourceTypeFilters: []string{"ec2:instance"},
@@ -632,6 +615,15 @@ func deleteSpotInstances(ctx context.Context, groupName string, groupId string, 
 			err = nil
 		}
 	}
+	// try to delete the security group
+	_, err := client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
+		GroupId: sgId,
+	})
+	if err != nil {
+		// TODO what do we want to do here? need to handle all the different cases?
+		log.Warn().Str("GroupID", groupId).Msg(err.Error())
+		err = nil
+	}
 	time.Sleep(30 * time.Second)
-	deleteSpotInstances(ctx, groupName, groupId, clusterName, client, taggingClient)
+	deleteSpotInstances(ctx, groupName, groupId, clusterName, sgId, client, taggingClient)
 }
