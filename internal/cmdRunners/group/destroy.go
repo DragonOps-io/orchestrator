@@ -21,7 +21,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"math/rand"
 	"net/http"
@@ -29,6 +28,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -459,7 +459,8 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 }
 
 func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config) error {
-	errs, ctx := errgroup.WithContext(ctx)
+	var wg sync.WaitGroup
+	errors := make(chan error, 0)
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying all %ss", dirName))
@@ -468,9 +469,11 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 	for _, d := range directories {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying %s %s", dirName, d.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
-		var g *errgroup.Group
-		g, ctx = errgroup.WithContext(ctx)
-		g.Go(func() error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			//g, ctx = errgroup.WithContext(ctx)
+			//g.Go(func() error {
 			// the directory name had cluster in it, we need to loop through and delete instances
 			//has /cluster resource label and i know the group
 			// d.Name() == /groups/groupId/cluster/clusterResourceLabel
@@ -489,6 +492,7 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 						cluster = &clusters[idx]
 					}
 				}
+
 				if cluster == nil {
 					// cluster not found what then?
 					log.Warn().Str("GroupID", group.ID).Msg("cluster not found and cannot delete spot instances")
@@ -510,13 +514,15 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 						if err != nil {
 							o := mm.Update(&group, "Status", "DESTROY_FAILED")
 							if o.Err != nil {
-								return o.Err
+								errors <- o.Err
+								return
 							}
 							o = mm.Update(&group, "FailedReason", err.Error())
 							if o.Err != nil {
-								return o.Err
+								errors <- o.Err
+								return
 							}
-							return err
+							return
 						}
 						for _, value := range output.SecurityGroups {
 							sgIds = append(sgIds, *value.GroupId)
@@ -533,26 +539,29 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 						if err != nil {
 							o := mm.Update(&group, "Status", "DESTROY_FAILED")
 							if o.Err != nil {
-								return o.Err
+								errors <- o.Err
+								return
 							}
 							o = mm.Update(&group, "FailedReason", err.Error())
 							if o.Err != nil {
-								return o.Err
+								errors <- o.Err
+								return
 							}
-							return fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+							errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+							return
 						}
 
 					}
-					g.Go(func() error {
+					go func() {
 						select {
 						case <-ctx.Done():
-							return ctx.Err()
+							return
 						default:
 							time.Sleep(30 * time.Second)
 							deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, *ec2Client, *tagClient)
 						}
-						return nil
-					})
+						return
+					}()
 				}
 			}
 			// test
@@ -562,19 +571,28 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 			if err != nil {
 				o := mm.Update(&group, "Status", "DESTROY_FAILED")
 				if o.Err != nil {
-					return o.Err
+					errors <- o.Err
+					return
 				}
 				o = mm.Update(&group, "FailedReason", err.Error())
 				if o.Err != nil {
-					return o.Err
+					errors <- o.Err
+					return
 				}
-				return fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+				errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+				return
 			}
-			return nil
-		})
+			return
+		}()
+	}
+	wg.Wait()
+	close(errors)
+	var err error
+	if len(errors) > 0 {
+		err = fmt.Errorf("multiple errors occurred with applying environments in group %s: %v", group.ResourceLabel, errors)
 	}
 	// Wait for completion and return the first error (if any)
-	return errs.Wait()
+	return err
 }
 
 func deleteSpotInstances(ctx context.Context, groupName string, groupId string, clusterName string, client ec2.Client, taggingClient resourcegroupstaggingapi.Client) {
@@ -600,7 +618,6 @@ func deleteSpotInstances(ctx context.Context, groupName string, groupId string, 
 			continue
 		}
 		for _, value := range output.ResourceTagMappingList {
-			// arn:aws:ec2:us-east-1:123456789012:instance/i-012abcd34efghi56
 			instanceIds = append(instanceIds, strings.Split(*value.ResourceARN, "/")[1])
 		}
 		pageNum++

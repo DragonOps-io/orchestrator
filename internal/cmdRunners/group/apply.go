@@ -428,10 +428,10 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 		//	return nil
 		//})
 	}
-	go func() {
-		wg.Wait()
-		close(errors)
-	}()
+	//go func() {
+	wg.Wait()
+	close(errors)
+	//}()
 	// Wait for completion and return the first error (if any)
 	//return errs.Wait()
 	var err error
