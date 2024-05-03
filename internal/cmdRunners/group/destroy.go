@@ -459,22 +459,23 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 }
 
 func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config) error {
-	var wg *sync.WaitGroup
-	errors := make(chan error, 0)
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying all %ss", dirName))
-	// directoeis is the directory full of clusters
-	// run all the applies in parallel in each folder
+
+	// go routine setup stuff
+	wg := &sync.WaitGroup{}
+	errors := make(chan error, 0)
+
 	for _, d := range directories {
+		wg.Add(1)
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying %s %s", dirName, d.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
-		wg.Add(1)
-		d := d
-		go func() {
+
+		go func(dir os.DirEntry) {
 			defer wg.Done()
 			if strings.Contains(path, "cluster") && !strings.Contains(path, "cluster_grafana") {
-				fmt.Println(d.Name())
+				fmt.Println(dir.Name())
 				clusterResourceLabel := strings.Split(strings.Split(path, "/groups/")[1], "/")[2]
 				// setup the client before the go routine?
 				ec2Client := ec2.NewFromConfig(cfg, func(o *ec2.Options) { o.Region = cfg.Region })
@@ -565,20 +566,26 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 			log.Debug().Str("GroupID", group.ID).Msg(path)
 			_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
-				errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
 			return
-		}()
+		}(d)
 	}
-	wg.Wait()
-	close(errors)
-	var err error
-	if len(errors) > 0 {
-		err = fmt.Errorf("multiple errors occurred with destroying resources in group %s: %v", group.ResourceLabel, errors)
+
+	go func() {
+		wg.Wait()
+		close(errors)
+	}()
+
+	errs := make([]error, 0)
+	for err := range errors {
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		err := fmt.Errorf("errors occurred with destroying resources in group %s: %v", group.ResourceLabel, errs)
 		return err
 	}
-	// Wait for completion and return the first error (if any)
 	return nil
 }
 

@@ -303,57 +303,64 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 }
 
 func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string) error {
-	errors := make(chan error, 0)
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying all %ss", dirName))
-	var wg sync.WaitGroup
+
+	// go routine setup stuff
+	wg := &sync.WaitGroup{}
+	errors := make(chan error, 0)
+
 	// run all the applies in parallel in each folder
 	for _, d := range directories {
-		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
-		//time.Sleep(5 * time.Second)
-		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
 		wg.Add(1)
-		d := d
-		go func() {
+		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
+		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
+
+		go func(dir os.DirEntry) {
 			defer wg.Done()
 			// apply terraform or return an error
 			log.Debug().Str("GroupID", group.ID).Msg(path)
 			out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
-				errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
 			// handle output for argocd credentials
 			if dirName == "cluster" {
-				err = saveArgoCdCredsToCluster(mm, out, group.ID, d.Name())
+				err = saveArgoCdCredsToCluster(mm, out, group.ID, dir.Name())
 				if err != nil {
-					errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 					return
 				}
 			}
 			// handle output for grafana credentials
 			if dirName == "cluster_grafana" {
-				err = saveGrafanaCredsToCluster(mm, out, group.ID, d.Name())
+				err = saveGrafanaCredsToCluster(mm, out, group.ID, dir.Name())
 				if err != nil {
-					errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 					return
 				}
 			}
-		}()
+		}(d)
 	}
 
-	wg.Wait()
-	close(errors)
+	go func() {
+		wg.Wait()
+		close(errors)
+	}()
 
-	var err error
-	if len(errors) > 0 {
-		err = fmt.Errorf("multiple errors occurred with applying resources in group %s: %v", group.ResourceLabel, errors)
+	errs := make([]error, 0)
+	for err := range errors {
+		errs = append(errs, err)
 	}
-	return err
+	if len(errs) > 0 {
+		err := fmt.Errorf("errors occurred with applying resources in group %s: %v", group.ResourceLabel, errs)
+		return err
+	}
+	return nil
 }
 
-// TODO above need to return err and then nil
 func saveGrafanaCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, clusterResourceLabel string) error {
 	for key, output := range outputs {
 		if key == "cluster_credentials" {
