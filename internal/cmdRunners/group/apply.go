@@ -303,21 +303,20 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 }
 
 func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string) error {
-	var wg sync.WaitGroup
 	errors := make(chan error, 0)
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying all %ss", dirName))
-
+	Wg := &sync.WaitGroup{}
 	// run all the applies in parallel in each folder
 	for _, d := range directories {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
 		//time.Sleep(5 * time.Second)
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
-		wg.Add(1)
+		Wg.Add(1)
 		d := d
 		go func() {
-			defer wg.Done()
+			defer Wg.Done()
 			// apply terraform or return an error
 			log.Debug().Str("GroupID", group.ID).Msg(path)
 			out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
@@ -344,7 +343,7 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 		}()
 	}
 
-	wg.Wait()
+	Wg.Wait()
 	close(errors)
 
 	var err error
