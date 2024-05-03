@@ -470,6 +470,7 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying %s %s", dirName, d.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
 		wg.Add(1)
+		d := d
 		go func() {
 			defer wg.Done()
 			//g, ctx = errgroup.WithContext(ctx)

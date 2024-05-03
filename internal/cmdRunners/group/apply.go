@@ -316,6 +316,7 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 		//time.Sleep(5 * time.Second)
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
 		wg.Add(1)
+		d := d
 		go func() {
 			defer wg.Done()
 			// apply terraform or return an error
@@ -436,7 +437,7 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 	//return errs.Wait()
 	var err error
 	if len(errors) > 0 {
-		err = fmt.Errorf("multiple errors occurred with applying environments in group %s: %v", group.ResourceLabel, errors)
+		err = fmt.Errorf("multiple errors occurred with applying resources in group %s: %v", group.ResourceLabel, errors)
 	}
 	return err
 }
