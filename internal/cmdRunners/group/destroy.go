@@ -459,7 +459,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 }
 
 func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config) error {
-	var wg sync.WaitGroup
+	var wg *sync.WaitGroup
 	errors := make(chan error, 0)
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)

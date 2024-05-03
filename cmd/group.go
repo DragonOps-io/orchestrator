@@ -7,21 +7,22 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/rs/zerolog/log"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
 
-func newGroupCmd() *cobra.Command {
+func newGroupCmd(wg *sync.WaitGroup) *cobra.Command {
 	environmentCmd := &cobra.Command{
 		Use:   "group",
 		Short: "Interact with groups",
 	}
-	environmentCmd.AddCommand(newGroupApplyCmd())
+	environmentCmd.AddCommand(newGroupApplyCmd(wg))
 	environmentCmd.AddCommand(newGroupDestroyCmd())
 	return environmentCmd
 }
 
-func newGroupApplyCmd() *cobra.Command {
+func newGroupApplyCmd(wg *sync.WaitGroup) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply a group stack",
@@ -40,7 +41,7 @@ func newGroupApplyCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			err = group.Apply(cmd.Context(), *payload, mm, isDryRun)
+			err = group.Apply(cmd.Context(), *payload, mm, isDryRun, wg)
 			if err != nil {
 				log.Error().Str("ApplyGroup", err.Error()).Msg(fmt.Sprintf("Encountered an err with applying group with id %s: %s", payload.GroupID, err))
 				os.Exit(1)
