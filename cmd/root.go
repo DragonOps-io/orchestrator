@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"sync"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -13,10 +12,10 @@ var rootCmd = &cobra.Command{
 resources.`,
 }
 
-func NewRootCommand(wg *sync.WaitGroup) *cobra.Command {
+func NewRootCommand() *cobra.Command {
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	rootCmd.PersistentFlags().BoolP("dry-run", "d", false, "Used to skip terraform deploy/deletion. For development purposes only.")
-	rootCmd.AddCommand(newGroupCmd(wg))
+	rootCmd.AddCommand(newGroupCmd())
 	rootCmd.AddCommand(newAppCommand())
 	return rootCmd
 }

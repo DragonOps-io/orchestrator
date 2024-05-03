@@ -6,23 +6,21 @@ import (
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/rs/zerolog/log"
-	"os"
-	"sync"
-
 	"github.com/spf13/cobra"
+	"os"
 )
 
-func newGroupCmd(wg *sync.WaitGroup) *cobra.Command {
+func newGroupCmd() *cobra.Command {
 	environmentCmd := &cobra.Command{
 		Use:   "group",
 		Short: "Interact with groups",
 	}
-	environmentCmd.AddCommand(newGroupApplyCmd(wg))
+	environmentCmd.AddCommand(newGroupApplyCmd())
 	environmentCmd.AddCommand(newGroupDestroyCmd())
 	return environmentCmd
 }
 
-func newGroupApplyCmd(wg *sync.WaitGroup) *cobra.Command {
+func newGroupApplyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply a group stack",
@@ -41,7 +39,7 @@ func newGroupApplyCmd(wg *sync.WaitGroup) *cobra.Command {
 				os.Exit(1)
 			}
 
-			err = group.Apply(cmd.Context(), *payload, mm, isDryRun, wg)
+			err = group.Apply(cmd.Context(), *payload, mm, isDryRun)
 			if err != nil {
 				log.Error().Str("ApplyGroup", err.Error()).Msg(fmt.Sprintf("Encountered an err with applying group with id %s: %s", payload.GroupID, err))
 				os.Exit(1)

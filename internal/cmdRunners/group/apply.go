@@ -19,7 +19,7 @@ import (
 	"sync"
 )
 
-func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool, wg *sync.WaitGroup) error {
+func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
 	log.Debug().
 		Str("GroupID", payload.GroupID).
 		Msg("Looking for group with matching ID")
@@ -148,7 +148,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
-		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, wg)
+		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume)
 		if err != nil {
 			o = mm.Update(&group, "Status", "APPLY_FAILED")
 			if o.Err != nil {
@@ -188,7 +188,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, wg *sync.WaitGroup) error {
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string) error {
 	log.Debug().Str("GroupID", group.ID).Msg("Templating Terraform with correct values")
 
 	command := fmt.Sprintf("/app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
@@ -217,7 +217,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	log.Debug().Str("GroupID", group.ID).Msg("Applying group Terraform")
 	// can't use a for loop because we need to do it in order
 	// apply networks all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "network", wg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "network")
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -231,7 +231,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply clusters all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster", wg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster")
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -245,7 +245,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply cluster grafana all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", wg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana")
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -259,7 +259,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment", wg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment")
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -273,7 +273,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply static environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static", wg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static")
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -287,7 +287,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "rds", wg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "rds")
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -302,12 +302,12 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	return nil
 }
 
-func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, wg *sync.WaitGroup) error {
+func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string) error {
 	errors := make(chan error, 0)
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying all %ss", dirName))
-
+	var wg sync.WaitGroup
 	// run all the applies in parallel in each folder
 	for _, d := range directories {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
@@ -342,6 +342,7 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 			}
 		}()
 	}
+
 	wg.Wait()
 	close(errors)
 
