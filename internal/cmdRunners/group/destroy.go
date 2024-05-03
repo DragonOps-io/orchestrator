@@ -620,6 +620,7 @@ func deleteSpotInstances(ctx context.Context, groupName string, groupId string, 
 		}
 	}
 	// try to delete the eni
+	log.Debug().Str("GroupID", groupId).Msg("attempting to delete ENI")
 	_, err := client.DeleteNetworkInterface(ctx, &ec2.DeleteNetworkInterfaceInput{
 		NetworkInterfaceId: eniId,
 	})
