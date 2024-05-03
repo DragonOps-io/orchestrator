@@ -3,7 +3,7 @@ module github.com/DragonOps-io/orchestrator
 go 1.22.2
 
 require (
-	github.com/DragonOps-io/types v0.0.0-20240430163350-47df534f3abf
+	github.com/DragonOps-io/types v0.0.0-20240503011734-61963db580c4
 	github.com/Ilios-LLC/magicmodel-go v0.0.0-20240419170255-2fdf213308e9
 	github.com/aws/aws-sdk-go-v2 v1.26.1
 	github.com/aws/aws-sdk-go-v2/config v1.26.3
@@ -18,7 +18,6 @@ require (
 	github.com/hashicorp/terraform-exec v0.19.0
 	github.com/rs/zerolog v1.30.0
 	github.com/spf13/cobra v1.8.0
-	golang.org/x/sync v0.5.0
 )
 
 require (
