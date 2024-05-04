@@ -70,5 +70,8 @@ func GetDoApiKeyFromSecretsManager(ctx context.Context, cfg aws.Config, userName
 	resp, err := smClient.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(fmt.Sprintf("do-api-key/%s", userName)),
 	})
+	if err != nil {
+		return nil, err
+	}
 	return resp.SecretString, err
 }
