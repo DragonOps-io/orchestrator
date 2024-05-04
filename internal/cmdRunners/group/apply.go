@@ -59,7 +59,36 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	}
 	log.Debug().Str("GroupID", group.ID).Msg("Found MasterAccount")
 
-	authResponse, err := utils.IsApiKeyValid(payload.DoApiKey)
+	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+		config.WithRegion(accounts[0].AwsRegion)
+		return nil
+	})
+	if err != nil {
+		aco := mm.Update(&group, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return aco.Err
+		}
+		aco = mm.Update(&group, "FailedReason", err.Error())
+		if aco.Err != nil {
+			return aco.Err
+		}
+		return err
+	}
+	// get the doApiKey from secrets manager, not the payload
+	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
+	if err != nil {
+		aco := mm.Update(&group, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return aco.Err
+		}
+		aco = mm.Update(&group, "FailedReason", err.Error())
+		if aco.Err != nil {
+			return aco.Err
+		}
+		return err
+	}
+
+	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
@@ -82,22 +111,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			return aco.Err
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-	}
-
-	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		config.WithRegion(accounts[0].AwsRegion)
-		return nil
-	})
-	if err != nil {
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			return aco.Err
-		}
-		aco = mm.Update(&group, "FailedReason", err.Error())
-		if aco.Err != nil {
-			return aco.Err
-		}
-		return err
 	}
 
 	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {

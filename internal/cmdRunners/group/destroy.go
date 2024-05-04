@@ -72,7 +72,37 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 	log.Debug().Str("GroupID", group.ID).Msg("Found MasterAccount")
 
-	authResponse, err := utils.IsApiKeyValid(payload.DoApiKey)
+	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+		config.WithRegion(accounts[0].AwsRegion)
+		return nil
+	})
+	if err != nil {
+		aco := mm.Update(&group, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return aco.Err
+		}
+		aco = mm.Update(&group, "FailedReason", err.Error())
+		if aco.Err != nil {
+			return aco.Err
+		}
+		return err
+	}
+
+	// get the doApiKey from secrets manager, not the payload
+	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
+	if err != nil {
+		aco := mm.Update(&group, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return aco.Err
+		}
+		aco = mm.Update(&group, "FailedReason", err.Error())
+		if aco.Err != nil {
+			return aco.Err
+		}
+		return err
+	}
+
+	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
 		aco := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if aco.Err != nil {
@@ -96,23 +126,6 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	var roleToAssume *string
 	if group.Account.CrossAccountRoleArn != nil {
 		roleToAssume = group.Account.CrossAccountRoleArn
-	}
-
-	var cfg aws.Config
-	cfg, err = config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		config.WithRegion(accounts[0].AwsRegion)
-		return nil
-	})
-	if err != nil {
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			return aco.Err
-		}
-		aco = mm.Update(&group, "FailedReason", err.Error())
-		if aco.Err != nil {
-			return aco.Err
-		}
-		return err
 	}
 
 	if roleToAssume != nil {
@@ -221,7 +234,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		}
 
 		log.Debug().Str("GroupID", group.ID).Msg("Deleting name servers from DragonOps.")
-		err = deleteNameServersFromDragonOps(payload.DoApiKey, authResponse.MasterAccountAccessRoleArn, authResponse.MasterAccountRegion, authResponse.Team, group.DragonOpsRoute53.NameServers, group.DragonOpsRoute53.RootDomain)
+		err = deleteNameServersFromDragonOps(*doApiKey, authResponse.MasterAccountAccessRoleArn, authResponse.MasterAccountRegion, authResponse.Team, group.DragonOpsRoute53.NameServers, group.DragonOpsRoute53.RootDomain)
 		if err != nil {
 			o = mm.Update(&group, "Status", "DESTROY_FAILED")
 			if o.Err != nil {
@@ -505,7 +518,6 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 					}()
 				}
 			}
-			// test
 			// destroy terraform or return an error
 			log.Debug().Str("GroupID", group.ID).Msg(path)
 			_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
