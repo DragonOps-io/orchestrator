@@ -493,73 +493,13 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 					// cluster not found what then?
 					log.Warn().Str("GroupID", group.ID).Msg("cluster not found and cannot delete spot instances")
 				} else {
-					//var eniId *string
-					var eniIds []string
-					// delete problem security group and spot instances
-					// delete eni
-					paginator := ec2.NewDescribeNetworkInterfacesPaginator(ec2Client, &ec2.DescribeNetworkInterfacesInput{
-						Filters: []ec2Types.Filter{{
-							Name:   aws.String("tag:cluster.k8s.amazonaws.com/name"),
-							Values: []string{fmt.Sprintf("%s-%s", group.Name, cluster.Name)},
-						}}})
-
-					eniPageNum := 0
-					for paginator.HasMorePages() {
-						output, err := paginator.NextPage(ctx)
-						if err != nil {
-							// TODO what do i want to do here?
-							log.Warn().Str("GroupID", group.ID).Msg(err.Error())
-							err = nil
-							continue
-						}
-						for _, value := range output.NetworkInterfaces {
-							// TODO not sure what this value looks like
-							log.Warn().Str("GroupID", group.ID).Msg(*value.NetworkInterfaceId)
-							eniIds = append(eniIds, *value.NetworkInterfaceId)
-						}
-						eniPageNum++
-					}
-					//if len(eniIds) > 1 || len(eniIds) < 1 {
-					//	log.Warn().Str("GroupID", group.ID).Msg("either the eni was not found to delete or there were more than one returned.")
-					//} else {
-					//	get security group id
-					//eniId = &eniIds[0]
-					//}
-					sgPaginator := ec2.NewDescribeSecurityGroupsPaginator(ec2Client, &ec2.DescribeSecurityGroupsInput{
-						Filters: []ec2Types.Filter{{
-							Name:   aws.String("tag:aws:eks:cluster-name"),
-							Values: []string{fmt.Sprintf("%s-%s", group.Name, cluster.Name)},
-						}},
-					}, func(o *ec2.DescribeSecurityGroupsPaginatorOptions) {
-						o.StopOnDuplicateToken = true
-					})
-					var clusterSgId *string
-					pageNum := 0
-					var sgIds []string
-					for sgPaginator.HasMorePages() {
-						output, err := sgPaginator.NextPage(ctx)
-						if err != nil {
-							errors <- err
-							return
-						}
-						for _, value := range output.SecurityGroups {
-							sgIds = append(sgIds, *value.GroupId)
-						}
-					}
-					pageNum++
-					if len(sgIds) > 1 || len(sgIds) < 1 {
-						log.Warn().Str("GroupID", group.ID).Msg("either the security group was not found to delete or there were more than one returned.")
-					} else {
-						// get security group id
-						clusterSgId = &sgIds[0]
-					}
 					go func() {
 						select {
 						case <-ctx.Done():
 							return
 						default:
 							time.Sleep(30 * time.Second)
-							deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, clusterSgId, eniIds, *ec2Client, *tagClient)
+							deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, ec2Client, tagClient)
 						}
 						return
 					}()
@@ -593,9 +533,101 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 	return nil
 }
 
-func deleteSpotInstances(ctx context.Context, groupName string, groupId string, clusterName string, sgId *string, eniIds []string, client ec2.Client, taggingClient resourcegroupstaggingapi.Client) {
+func deleteSpotInstances(ctx context.Context, groupName string, groupId string, clusterName string, ec2Client *ec2.Client, taggingClient *resourcegroupstaggingapi.Client) {
 	// first retrieve all instances with sepcific tag
-	paginator := resourcegroupstaggingapi.NewGetResourcesPaginator(&taggingClient, &resourcegroupstaggingapi.GetResourcesInput{
+	instanceIds := getSpotInstanceIds(ctx, taggingClient, groupName, clusterName)
+	if len(instanceIds) > 0 {
+		_, err := ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+			InstanceIds: instanceIds,
+		})
+		if err != nil {
+			log.Warn().Str("GroupID", groupId).Msg(err.Error())
+			err = nil
+		}
+	}
+
+	// get the eni ids and try to delete
+	eniIds := getEniIds(ctx, ec2Client, groupName, clusterName)
+	for _, eniId := range eniIds {
+		log.Debug().Str("GroupID", groupId).Msg("attempting to delete ENIs")
+		_, err := ec2Client.DeleteNetworkInterface(ctx, &ec2.DeleteNetworkInterfaceInput{
+			NetworkInterfaceId: &eniId,
+		})
+		if err != nil {
+			log.Warn().Str("GroupID", groupId).Msg(err.Error())
+			err = nil
+		}
+	}
+
+	// get the security group ids
+	sgIds := getSecurityGroupIds(ctx, ec2Client, groupName, clusterName)
+	// try to delete the security group
+	for _, sgId := range sgIds {
+		_, err := ec2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
+			GroupId: &sgId,
+		})
+		if err != nil {
+			log.Warn().Str("GroupID", groupId).Msg(err.Error())
+			err = nil
+		}
+	}
+
+	time.Sleep(30 * time.Second)
+	deleteSpotInstances(ctx, groupName, groupId, clusterName, ec2Client, taggingClient)
+}
+
+func getEniIds(ctx context.Context, ec2Client *ec2.Client, groupName string, clusterName string) []string {
+	var eniIds []string
+	paginator := ec2.NewDescribeNetworkInterfacesPaginator(ec2Client, &ec2.DescribeNetworkInterfacesInput{
+		Filters: []ec2Types.Filter{{
+			Name:   aws.String("tag:cluster.k8s.amazonaws.com/name"),
+			Values: []string{fmt.Sprintf("%s-%s", groupName, clusterName)},
+		}}})
+
+	eniPageNum := 0
+	for paginator.HasMorePages() {
+		output, err := paginator.NextPage(ctx)
+		if err != nil {
+			err = nil
+			continue
+		}
+		for _, value := range output.NetworkInterfaces {
+			eniIds = append(eniIds, *value.NetworkInterfaceId)
+		}
+		eniPageNum++
+	}
+	return eniIds
+}
+
+func getSecurityGroupIds(ctx context.Context, ec2Client *ec2.Client, groupName string, clusterName string) []string {
+	var sgIds []string
+	sgPaginator := ec2.NewDescribeSecurityGroupsPaginator(ec2Client, &ec2.DescribeSecurityGroupsInput{
+		Filters: []ec2Types.Filter{{
+			Name:   aws.String("tag:aws:eks:cluster-name"),
+			Values: []string{fmt.Sprintf("%s-%s", groupName, clusterName)},
+		}},
+	}, func(o *ec2.DescribeSecurityGroupsPaginatorOptions) {
+		o.StopOnDuplicateToken = true
+	})
+
+	pageNum := 0
+	for sgPaginator.HasMorePages() {
+		output, err := sgPaginator.NextPage(ctx)
+		if err != nil {
+			err = nil
+			continue
+		}
+		for _, value := range output.SecurityGroups {
+			sgIds = append(sgIds, *value.GroupId)
+		}
+		pageNum++
+	}
+	return sgIds
+}
+
+func getSpotInstanceIds(ctx context.Context, taggingClient *resourcegroupstaggingapi.Client, groupName string, clusterName string) []string {
+	var instanceIds []string
+	paginator := resourcegroupstaggingapi.NewGetResourcesPaginator(taggingClient, &resourcegroupstaggingapi.GetResourcesInput{
 		ResourceTypeFilters: []string{"ec2:instance"},
 		TagFilters: []tagTypes.TagFilter{{
 			Key:    aws.String("aws:eks:cluster-name"),
@@ -606,12 +638,9 @@ func deleteSpotInstances(ctx context.Context, groupName string, groupId string, 
 	})
 
 	pageNum := 0
-	var instanceIds []string
 	for paginator.HasMorePages() {
 		output, err := paginator.NextPage(ctx)
 		if err != nil {
-			// TODO what do i want to do here?
-			log.Warn().Str("GroupID", groupId).Msg(err.Error())
 			err = nil
 			continue
 		}
@@ -620,38 +649,5 @@ func deleteSpotInstances(ctx context.Context, groupName string, groupId string, 
 		}
 		pageNum++
 	}
-	if len(instanceIds) > 0 {
-		_, err := client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
-			InstanceIds: instanceIds,
-		})
-		if err != nil {
-			// TODO what do we want to do here? need to handle all the different cases?
-			log.Warn().Str("GroupID", groupId).Msg(err.Error())
-			err = nil
-		}
-	}
-	// try to delete the enis
-	for _, eniId := range eniIds {
-		log.Debug().Str("GroupID", groupId).Msg("attempting to delete ENIs")
-		_, err := client.DeleteNetworkInterface(ctx, &ec2.DeleteNetworkInterfaceInput{
-			NetworkInterfaceId: &eniId,
-		})
-		if err != nil {
-			// TODO what do we want to do here? need to handle all the different cases?
-			log.Warn().Str("GroupID", groupId).Msg(err.Error())
-			err = nil
-		}
-	}
-
-	// try to delete the security group
-	_, err := client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
-		GroupId: sgId,
-	})
-	if err != nil {
-		// TODO what do we want to do here? need to handle all the different cases?
-		log.Warn().Str("GroupID", groupId).Msg(err.Error())
-		err = nil
-	}
-	time.Sleep(30 * time.Second)
-	deleteSpotInstances(ctx, groupName, groupId, clusterName, sgId, eniIds, client, taggingClient)
+	return instanceIds
 }

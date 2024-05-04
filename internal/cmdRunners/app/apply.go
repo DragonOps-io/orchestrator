@@ -185,7 +185,6 @@ func updateEnvironmentStatusesToApplied(app types.App, environmentsToApply []typ
 
 func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string) error {
 	log.Debug().Str("AppID", app.ID).Msg("Templating Terraform with correct values")
-	//errs, ctx := errgroup.WithContext(ctx)
 
 	for _, env := range environments {
 		appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
@@ -211,14 +210,6 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
 		log.Debug().Str("AppID", app.ID).Msg(*msg)
-		//}
-
-		//for _, env := range environments {
-		//	errs.Go(func() error {
-		//appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
-		//if os.Getenv("IS_LOCAL") == "true" {
-		//	appPath = fmt.Sprintf("./apps/%s/%s", app.ID, env.ID)
-		//}
 
 		var roleToAssume *string
 		if env.Group.Account.CrossAccountRoleArn != nil {
@@ -247,7 +238,6 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		}
 
 		log.Debug().Str("AppID", app.ID).Msg("Updating app status")
-		// get matching environment
 
 		for idx := range app.Environments {
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
@@ -265,9 +255,6 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			return o.Err
 		}
 		log.Debug().Str("AppID", app.ID).Msg("App status updated")
-		//})
 	}
 	return nil
-
-	//return errs.Wait()
 }

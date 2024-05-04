@@ -163,7 +163,6 @@ func updateEnvironmentStatusesToDestroyFailed(app types.App, environmentsToApply
 
 func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string) error {
 	log.Debug().Str("AppID", app.ID).Msg("Templating Terraform with correct values")
-	//errs, ctx := errgroup.WithContext(ctx)
 
 	for _, env := range environments {
 		appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
@@ -189,14 +188,6 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
 		log.Debug().Str("AppID", app.ID).Msg(*msg)
-		//}
-		// run all the applies in parallel in each folder
-		//for _, env := range environments {
-		//errs.Go(func() error {
-		//appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
-		//if os.Getenv("IS_LOCAL") == "true" {
-		//	appPath = fmt.Sprintf("./apps/%s/%s", app.ID, env.ID)
-		//}
 
 		var roleToAssume *string
 		if env.Group.Account.CrossAccountRoleArn != nil {
@@ -231,18 +222,12 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 				break
 			}
 		}
-		//appEnvConfig := app.Environments[env.ResourceLabel]
-		//appEnvConfig.Status = "DESTROYED"
-		//appEnvConfig.Endpoint = ""
-		//app.Environments[env.ResourceLabel] = appEnvConfig
 		o := mm.Save(&app)
 		if o.Err != nil {
 			return o.Err
 		}
 		log.Debug().Str("AppID", app.ID).Msg("App status updated")
 		return nil
-		//})
 	}
-	//return errs.Wait()
 	return nil
 }
