@@ -1,12 +1,9 @@
 module github.com/DragonOps-io/orchestrator
 
-go 1.21.5
-
-// For local testing
-//replace github.com/DragonOps-io/api => ../dragonops/api
+go 1.22.2
 
 require (
-	github.com/DragonOps-io/api v0.0.0-20240428191412-073e859a4ad0
+	github.com/DragonOps-io/types v0.0.0-20240505015255-abb62e37cf6d
 	github.com/Ilios-LLC/magicmodel-go v0.0.0-20240419170255-2fdf213308e9
 	github.com/aws/aws-sdk-go-v2 v1.26.1
 	github.com/aws/aws-sdk-go-v2/config v1.26.3
@@ -14,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.159.0
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.21.4
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.37.0
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.28.6
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.29.7
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.7
 	github.com/hashicorp/go-version v1.6.0
@@ -21,7 +19,6 @@ require (
 	github.com/hashicorp/terraform-exec v0.19.0
 	github.com/rs/zerolog v1.30.0
 	github.com/spf13/cobra v1.8.0
-	golang.org/x/sync v0.5.0
 )
 
 require (

@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"io"
 	"net/http"
 	"os"
@@ -24,6 +27,7 @@ type IsValidResponse struct {
 	IsValid                    bool   `json:"is_valid"`
 	MasterAccountAccessRoleArn string `json:"master_account_access_role_arn"`
 	MasterAccountRegion        string `json:"master_account_region"`
+	UserName                   string `json:"user_name"`
 }
 
 func IsApiKeyValid(doApiKey string) (*IsValidResponse, error) {
@@ -59,4 +63,15 @@ func IsApiKeyValid(doApiKey string) (*IsValidResponse, error) {
 		return nil, err
 	}
 	return &response, nil
+}
+
+func GetDoApiKeyFromSecretsManager(ctx context.Context, cfg aws.Config, userName string) (*string, error) {
+	smClient := secretsmanager.NewFromConfig(cfg)
+	resp, err := smClient.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String(fmt.Sprintf("do-api-key/%s", userName)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.SecretString, err
 }

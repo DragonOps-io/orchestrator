@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine as build
+FROM golang:1.22-alpine as build
 
 ENV GOPRIVATE="github.com/DragonOps-io/*"
 RUN apk add --no-cache file git rsync openssh-client
@@ -30,7 +30,7 @@ FROM 124269415015.dkr.ecr.us-east-1.amazonaws.com/dev-worker:latest as worker
 FROM alpine:3.18.3
 
 WORKDIR /app
-RUN apk add --no-cache bash git age
+RUN apk add --no-cache bash git age aws-cli
 COPY --from=build /app/orchestrator .
 COPY --from=worker /app/worker .
 COPY --from=worker /app/tmpl.tgz.age .

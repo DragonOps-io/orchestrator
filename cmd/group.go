@@ -6,9 +6,8 @@ import (
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/rs/zerolog/log"
-	"os"
-
 	"github.com/spf13/cobra"
+	"os"
 )
 
 func newGroupCmd() *cobra.Command {

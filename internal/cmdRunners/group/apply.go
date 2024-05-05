@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/DragonOps-io/api/types"
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
+	"github.com/DragonOps-io/types"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -59,7 +59,36 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	}
 	log.Debug().Str("GroupID", group.ID).Msg("Found MasterAccount")
 
-	authResponse, err := utils.IsApiKeyValid(payload.DoApiKey)
+	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+		config.WithRegion(accounts[0].AwsRegion)
+		return nil
+	})
+	if err != nil {
+		aco := mm.Update(&group, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return aco.Err
+		}
+		aco = mm.Update(&group, "FailedReason", err.Error())
+		if aco.Err != nil {
+			return aco.Err
+		}
+		return err
+	}
+	// get the doApiKey from secrets manager, not the payload
+	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
+	if err != nil {
+		aco := mm.Update(&group, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return aco.Err
+		}
+		aco = mm.Update(&group, "FailedReason", err.Error())
+		if aco.Err != nil {
+			return aco.Err
+		}
+		return err
+	}
+
+	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
@@ -82,22 +111,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			return aco.Err
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-	}
-
-	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		config.WithRegion(accounts[0].AwsRegion)
-		return nil
-	})
-	if err != nil {
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			return aco.Err
-		}
-		aco = mm.Update(&group, "FailedReason", err.Error())
-		if aco.Err != nil {
-			return aco.Err
-		}
-		return err
 	}
 
 	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
@@ -303,142 +316,70 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 }
 
 func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string) error {
-	//errs, ctx := errgroup.WithContext(ctx)
-	var wg sync.WaitGroup
-	errors := make(chan error, 0)
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying all %ss", dirName))
 
+	// go routine setup stuff
+	wg := &sync.WaitGroup{}
+	errors := make(chan error, 0)
+
 	// run all the applies in parallel in each folder
 	for _, d := range directories {
-		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
-		//time.Sleep(5 * time.Second)
-		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
 		wg.Add(1)
-		go func() {
+		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
+		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
+
+		go func(dir os.DirEntry) {
 			defer wg.Done()
 			// apply terraform or return an error
 			log.Debug().Str("GroupID", group.ID).Msg(path)
 			out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
-				o := mm.Update(&group, "Status", "APPLY_FAILED")
-				if o.Err != nil {
-					errors <- o.Err
-					return
-				}
-				o = mm.Update(&group, "FailedReason", err.Error())
-				if o.Err != nil {
-					errors <- o.Err
-					return
-				}
-				errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
 			// handle output for argocd credentials
 			if dirName == "cluster" {
-				err = saveArgoCdCredsToCluster(mm, out, group.ID, d.Name())
+				err = saveArgoCdCredsToCluster(mm, out, group.ID, dir.Name())
 				if err != nil {
-					o := mm.Update(&group, "Status", "APPLY_FAILED")
-					if o.Err != nil {
-						errors <- o.Err
-						return
-					}
-					o = mm.Update(&group, "FailedReason", err.Error())
-					if o.Err != nil {
-						errors <- o.Err
-						return
-					}
-					errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 					return
 				}
 			}
 			// handle output for grafana credentials
 			if dirName == "cluster_grafana" {
-				err = saveGrafanaCredsToCluster(mm, out, group.ID, d.Name())
+				err = saveGrafanaCredsToCluster(mm, out, group.ID, dir.Name())
 				if err != nil {
-					o := mm.Update(&group, "Status", "APPLY_FAILED")
-					if o.Err != nil {
-						errors <- o.Err
-						return
-					}
-					o = mm.Update(&group, "FailedReason", err.Error())
-					if o.Err != nil {
-						errors <- o.Err
-						return
-					}
-					errors <- fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 					return
 				}
 			}
-			//return nil
-			//result, err := test(3)
-			//if err != nil {
-			//	errors <- err
-			//	return
-			//}
-			//results <- result
-		}()
-
-		//errs.Go(func() error {
-		//	// apply terraform or return an error
-		//	log.Debug().Str("GroupID", group.ID).Msg(path)
-		//	out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
-		//	if err != nil {
-		//		o := mm.Update(&group, "Status", "APPLY_FAILED")
-		//		if o.Err != nil {
-		//			return o.Err
-		//		}
-		//		o = mm.Update(&group, "FailedReason", err.Error())
-		//		if o.Err != nil {
-		//			return o.Err
-		//		}
-		//		return fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
-		//	}
-		//	// handle output for argocd credentials
-		//	if dirName == "cluster" {
-		//		err = saveArgoCdCredsToCluster(mm, out, group.ID, d.Name())
-		//		if err != nil {
-		//			o := mm.Update(&group, "Status", "APPLY_FAILED")
-		//			if o.Err != nil {
-		//				return o.Err
-		//			}
-		//			o = mm.Update(&group, "FailedReason", err.Error())
-		//			if o.Err != nil {
-		//				return o.Err
-		//			}
-		//			return fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
-		//		}
-		//	}
-		//	// handle output for grafana credentials
-		//	if dirName == "cluster_grafana" {
-		//		err = saveGrafanaCredsToCluster(mm, out, group.ID, d.Name())
-		//		if err != nil {
-		//			o := mm.Update(&group, "Status", "APPLY_FAILED")
-		//			if o.Err != nil {
-		//				return o.Err
-		//			}
-		//			o = mm.Update(&group, "FailedReason", err.Error())
-		//			if o.Err != nil {
-		//				return o.Err
-		//			}
-		//			return fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
-		//		}
-		//	}
-		//	return nil
-		//})
+			// handle output for alb dns name for environment
+			if dirName == "environment" {
+				err = saveEnvironmentAlbDnsName(mm, out, group.ID, dir.Name())
+				if err != nil {
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+					return
+				}
+			}
+		}(d)
 	}
+
 	go func() {
 		wg.Wait()
 		close(errors)
 	}()
-	// Wait for completion and return the first error (if any)
-	//return errs.Wait()
-	var err error
-	if len(errors) > 0 {
-		err = fmt.Errorf("multiple errors occurred with applying environments in group %s: %v", group.ResourceLabel, errors)
+
+	errs := make([]error, 0)
+	for err := range errors {
+		errs = append(errs, err)
 	}
-	return err
+	if len(errs) > 0 {
+		err := fmt.Errorf("errors occurred with applying resources in group %s: %v", group.ResourceLabel, errs)
+		return err
+	}
+	return nil
 }
 
 func saveGrafanaCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, clusterResourceLabel string) error {
@@ -544,4 +485,45 @@ func saveArgoCdCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec
 	}
 
 	return nil
+}
+
+func saveEnvironmentAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, envResourceLabel string) error {
+	for key, output := range outputs {
+		if key == "alb" {
+			var alb AlbMap
+			if err := json.Unmarshal(output.Value, &alb); err != nil {
+				return err
+			}
+			var envs []types.Environment
+			o := mm.Where(&envs, "Group.ID", groupID)
+			if o.Err != nil {
+				return o.Err
+			}
+			for _, e := range envs {
+				if e.ResourceLabel == envResourceLabel {
+					e.AlbDnsName = alb.DnsName
+					o = mm.Update(&e, "AlbDnsName", alb.DnsName)
+					if o.Err != nil {
+						return o.Err
+					}
+					break
+				}
+			}
+		}
+	}
+	return nil
+}
+
+type AlbMap struct {
+	Id               string                 `json:"id"`
+	DnsName          string                 `json:"dns_name"`
+	ArnSuffix        string                 `json:"arn_suffix"`
+	Arn              string                 `json:"arn"`
+	ListenerRules    map[string]interface{} `json:"listener_rules"`
+	Listeners        map[string]interface{} `json:"listeners"`
+	Route53Records   []string               `json:"route_53_records"`
+	SecurityGroupArn string                 `json:"security_group_arn"`
+	SecurityGroupId  string                 `json:"security_group_id"`
+	TargetGroups     map[string]interface{} `json:"target_groups"`
+	ZoneId           string                 `json:"zone_id"`
 }

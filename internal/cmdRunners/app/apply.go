@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/DragonOps-io/api/types"
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
+	"github.com/DragonOps-io/types"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
 	"os"
 	"strings"
@@ -61,7 +62,29 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	}
 	log.Debug().Str("AppID", payload.AppID).Msg("Found Master Account")
 
-	authResponse, err := utils.IsApiKeyValid(payload.DoApiKey)
+	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+		config.WithRegion(accounts[0].AwsRegion)
+		return nil
+	})
+	if err != nil {
+		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+		if ue != nil {
+			return ue
+		}
+		return err
+	}
+
+	// get the doApiKey from secrets manager, not the payload
+	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
+	if err != nil {
+		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+		if ue != nil {
+			return ue
+		}
+		return err
+	}
+
+	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
 		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 		if ue != nil {
@@ -75,18 +98,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			return ue
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-	}
-
-	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		config.WithRegion(accounts[0].AwsRegion)
-		return nil
-	})
-	if err != nil {
-		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
-		if ue != nil {
-			return ue
-		}
-		return err
 	}
 
 	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
@@ -184,7 +195,6 @@ func updateEnvironmentStatusesToApplied(app types.App, environmentsToApply []typ
 
 func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string) error {
 	log.Debug().Str("AppID", app.ID).Msg("Templating Terraform with correct values")
-	//errs, ctx := errgroup.WithContext(ctx)
 
 	for _, env := range environments {
 		appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
@@ -210,31 +220,34 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
 		log.Debug().Str("AppID", app.ID).Msg(*msg)
-		//}
-
-		//for _, env := range environments {
-		//	errs.Go(func() error {
-		//appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
-		//if os.Getenv("IS_LOCAL") == "true" {
-		//	appPath = fmt.Sprintf("./apps/%s/%s", app.ID, env.ID)
-		//}
 
 		var roleToAssume *string
 		if env.Group.Account.CrossAccountRoleArn != nil {
 			roleToAssume = env.Group.Account.CrossAccountRoleArn
 		}
 
-		out, err := terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
-		if err != nil {
-			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
-			if ue != nil {
-				return ue
+		var out map[string]tfexec.OutputMeta
+		if app.SubType != "static" {
+			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
+			if err != nil {
+				ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+				if ue != nil {
+					return ue
+				}
+				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 			}
-			return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+		} else {
+			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application-static", appPath), *execPath, roleToAssume)
+			if err != nil {
+				ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+				if ue != nil {
+					return ue
+				}
+				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+			}
 		}
 
 		log.Debug().Str("AppID", app.ID).Msg("Updating app status")
-		// get matching environment
 
 		for idx := range app.Environments {
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
@@ -252,9 +265,6 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			return o.Err
 		}
 		log.Debug().Str("AppID", app.ID).Msg("App status updated")
-		//})
 	}
 	return nil
-
-	//return errs.Wait()
 }

@@ -16,7 +16,7 @@ type Payload struct {
 	GroupID  string `json:"group_id"`
 	JobName  string `json:"job_name"`
 	Region   string `json:"region"`
-	DoApiKey string `json:"do_api_key"`
+	UserName string `json:"user_name"`
 }
 
 func GetPayload() (*Payload, error) {

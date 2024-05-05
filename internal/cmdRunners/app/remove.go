@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/DragonOps-io/api/types"
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
+	"github.com/DragonOps-io/types"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -59,7 +59,25 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 	}
 
 	log.Debug().Str("AppID", payload.AppID).Msg("Found Master Account")
-	authResponse, err := utils.IsApiKeyValid(payload.DoApiKey)
+
+	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+		config.WithRegion(accounts[0].AwsRegion)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
+	if err != nil {
+		o = mm.Update(&app, "Status", "DELETE_FAILED")
+		if o.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("an error occurred when trying to find the Do Api Key: %s", o.Err)
+	}
+
+	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
 		aco := mm.Update(&app, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
@@ -73,14 +91,6 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 			return o.Err
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-	}
-
-	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		config.WithRegion(accounts[0].AwsRegion)
-		return nil
-	})
-	if err != nil {
-		return err
 	}
 
 	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
@@ -116,17 +126,10 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 		for _, env := range appEnvironmentsToDestroy {
 			for idx := range app.Environments {
 				if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
-					//if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
 					app.Environments[idx].Status = "DESTROYED"
 					app.Environments[idx].Endpoint = ""
-					//app.Environments[idx] = appEnvConfig
 				}
 			}
-
-			//appEnvConfig := app.Environments[env.ResourceLabel]
-			//appEnvConfig.Status = "DESTROYED"
-			//appEnvConfig.Endpoint = ""
-			//app.Environments[env.ResourceLabel] = appEnvConfig
 			o = mm.Save(&app)
 			if o.Err != nil {
 				return o.Err

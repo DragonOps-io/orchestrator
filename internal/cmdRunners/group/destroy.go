@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/DragonOps-io/api/types"
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
+	"github.com/DragonOps-io/types"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -21,7 +21,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"math/rand"
 	"net/http"
@@ -29,6 +28,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -72,7 +72,37 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 	log.Debug().Str("GroupID", group.ID).Msg("Found MasterAccount")
 
-	authResponse, err := utils.IsApiKeyValid(payload.DoApiKey)
+	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+		config.WithRegion(accounts[0].AwsRegion)
+		return nil
+	})
+	if err != nil {
+		aco := mm.Update(&group, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return aco.Err
+		}
+		aco = mm.Update(&group, "FailedReason", err.Error())
+		if aco.Err != nil {
+			return aco.Err
+		}
+		return err
+	}
+
+	// get the doApiKey from secrets manager, not the payload
+	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
+	if err != nil {
+		aco := mm.Update(&group, "Status", "APPLY_FAILED")
+		if aco.Err != nil {
+			return aco.Err
+		}
+		aco = mm.Update(&group, "FailedReason", err.Error())
+		if aco.Err != nil {
+			return aco.Err
+		}
+		return err
+	}
+
+	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
 		aco := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if aco.Err != nil {
@@ -96,23 +126,6 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	var roleToAssume *string
 	if group.Account.CrossAccountRoleArn != nil {
 		roleToAssume = group.Account.CrossAccountRoleArn
-	}
-
-	var cfg aws.Config
-	cfg, err = config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		config.WithRegion(accounts[0].AwsRegion)
-		return nil
-	})
-	if err != nil {
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			return aco.Err
-		}
-		aco = mm.Update(&group, "FailedReason", err.Error())
-		if aco.Err != nil {
-			return aco.Err
-		}
-		return err
 	}
 
 	if roleToAssume != nil {
@@ -221,7 +234,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		}
 
 		log.Debug().Str("GroupID", group.ID).Msg("Deleting name servers from DragonOps.")
-		err = deleteNameServersFromDragonOps(payload.DoApiKey, authResponse.MasterAccountAccessRoleArn, authResponse.MasterAccountRegion, authResponse.Team, group.DragonOpsRoute53.NameServers, group.DragonOpsRoute53.RootDomain)
+		err = deleteNameServersFromDragonOps(*doApiKey, authResponse.MasterAccountAccessRoleArn, authResponse.MasterAccountRegion, authResponse.Team, group.DragonOpsRoute53.NameServers, group.DragonOpsRoute53.RootDomain)
 		if err != nil {
 			o = mm.Update(&group, "Status", "DESTROY_FAILED")
 			if o.Err != nil {
@@ -459,23 +472,24 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 }
 
 func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config) error {
-	errs, ctx := errgroup.WithContext(ctx)
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying all %ss", dirName))
-	// directoeis is the directory full of clusters
-	// run all the applies in parallel in each folder
+
+	// go routine setup stuff
+	wg := &sync.WaitGroup{}
+	errors := make(chan error, 0)
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for _, d := range directories {
+		wg.Add(1)
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying %s %s", dirName, d.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
-		var g *errgroup.Group
-		g, ctx = errgroup.WithContext(ctx)
-		g.Go(func() error {
-			// the directory name had cluster in it, we need to loop through and delete instances
-			//has /cluster resource label and i know the group
-			// d.Name() == /groups/groupId/cluster/clusterResourceLabel
+
+		go func(dir os.DirEntry) {
+			defer wg.Done()
 			if strings.Contains(path, "cluster") && !strings.Contains(path, "cluster_grafana") {
-				fmt.Println(d.Name())
+				fmt.Println(dir.Name())
 				clusterResourceLabel := strings.Split(strings.Split(path, "/groups/")[1], "/")[2]
 				// setup the client before the go routine?
 				ec2Client := ec2.NewFromConfig(cfg, func(o *ec2.Options) { o.Region = cfg.Region })
@@ -493,93 +507,139 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 					// cluster not found what then?
 					log.Warn().Str("GroupID", group.ID).Msg("cluster not found and cannot delete spot instances")
 				} else {
-					// delete problem security groupt and spot instances
-					paginator := ec2.NewDescribeSecurityGroupsPaginator(ec2Client, &ec2.DescribeSecurityGroupsInput{
-						Filters: []ec2Types.Filter{{
-							Name:   aws.String("tag:aws:eks:cluster-name"),
-							Values: []string{fmt.Sprintf("%s-%s", group.Name, cluster.Name)},
-						}},
-					}, func(o *ec2.DescribeSecurityGroupsPaginatorOptions) {
-						o.StopOnDuplicateToken = true
-					})
-
-					pageNum := 0
-					var sgIds []string
-					for paginator.HasMorePages() {
-						output, err := paginator.NextPage(ctx)
-						if err != nil {
-							o := mm.Update(&group, "Status", "DESTROY_FAILED")
-							if o.Err != nil {
-								return o.Err
-							}
-							o = mm.Update(&group, "FailedReason", err.Error())
-							if o.Err != nil {
-								return o.Err
-							}
-							return err
-						}
-						for _, value := range output.SecurityGroups {
-							sgIds = append(sgIds, *value.GroupId)
-						}
-					}
-					pageNum++
-					if len(sgIds) > 1 || len(sgIds) < 1 {
-						log.Warn().Str("GroupID", group.ID).Msg("either the security group was not found to delete or there were more than one returned.")
-					} else {
-						// delete
-						_, err := ec2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
-							GroupId: &sgIds[0],
-						})
-						if err != nil {
-							o := mm.Update(&group, "Status", "DESTROY_FAILED")
-							if o.Err != nil {
-								return o.Err
-							}
-							o = mm.Update(&group, "FailedReason", err.Error())
-							if o.Err != nil {
-								return o.Err
-							}
-							return fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
-						}
-
-					}
-					g.Go(func() error {
+					go func() {
 						select {
-						case <-ctx.Done():
-							return ctx.Err()
+						case <-cancelCtx.Done():
+							return
 						default:
-							time.Sleep(30 * time.Second)
-							deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, *ec2Client, *tagClient)
 						}
-						return nil
-					})
+						time.Sleep(30 * time.Second)
+						deleteSpotInstances(cancelCtx, group.Name, group.ID, cluster.Name, ec2Client, tagClient)
+					}()
 				}
 			}
-			// test
 			// destroy terraform or return an error
 			log.Debug().Str("GroupID", group.ID).Msg(path)
 			_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
-				o := mm.Update(&group, "Status", "DESTROY_FAILED")
-				if o.Err != nil {
-					return o.Err
-				}
-				o = mm.Update(&group, "FailedReason", err.Error())
-				if o.Err != nil {
-					return o.Err
-				}
-				return fmt.Errorf("error for %s %s: %v", dirName, d.Name(), err)
+				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+				return
 			}
-			return nil
-		})
+			return
+		}(d)
 	}
-	// Wait for completion and return the first error (if any)
-	return errs.Wait()
+
+	go func() {
+		wg.Wait()
+		close(errors)
+	}()
+
+	errs := make([]error, 0)
+	for err := range errors {
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		err := fmt.Errorf("errors occurred with destroying resources in group %s: %v", group.ResourceLabel, errs)
+		return err
+	}
+	return nil
 }
 
-func deleteSpotInstances(ctx context.Context, groupName string, groupId string, clusterName string, client ec2.Client, taggingClient resourcegroupstaggingapi.Client) {
+func deleteSpotInstances(ctx context.Context, groupName string, groupId string, clusterName string, ec2Client *ec2.Client, taggingClient *resourcegroupstaggingapi.Client) {
 	// first retrieve all instances with sepcific tag
-	paginator := resourcegroupstaggingapi.NewGetResourcesPaginator(&taggingClient, &resourcegroupstaggingapi.GetResourcesInput{
+	instanceIds := getSpotInstanceIds(ctx, taggingClient, groupName, clusterName)
+	if len(instanceIds) > 0 {
+		_, err := ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+			InstanceIds: instanceIds,
+		})
+		if err != nil {
+			log.Warn().Str("GroupID", groupId).Msg(err.Error())
+			err = nil
+		}
+	}
+
+	// get the eni ids and try to delete
+	eniIds := getEniIds(ctx, ec2Client, groupName, clusterName)
+	for _, eniId := range eniIds {
+		log.Debug().Str("GroupID", groupId).Msg("attempting to delete ENIs")
+		_, err := ec2Client.DeleteNetworkInterface(ctx, &ec2.DeleteNetworkInterfaceInput{
+			NetworkInterfaceId: &eniId,
+		})
+		if err != nil {
+			log.Warn().Str("GroupID", groupId).Msg(err.Error())
+			err = nil
+		}
+	}
+
+	// get the security group ids
+	sgIds := getSecurityGroupIds(ctx, ec2Client, groupName, clusterName)
+	// try to delete the security group
+	for _, sgId := range sgIds {
+		_, err := ec2Client.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
+			GroupId: &sgId,
+		})
+		if err != nil {
+			log.Warn().Str("GroupID", groupId).Msg(err.Error())
+			err = nil
+		}
+	}
+
+	time.Sleep(30 * time.Second)
+	deleteSpotInstances(ctx, groupName, groupId, clusterName, ec2Client, taggingClient)
+}
+
+func getEniIds(ctx context.Context, ec2Client *ec2.Client, groupName string, clusterName string) []string {
+	var eniIds []string
+	paginator := ec2.NewDescribeNetworkInterfacesPaginator(ec2Client, &ec2.DescribeNetworkInterfacesInput{
+		Filters: []ec2Types.Filter{{
+			Name:   aws.String("tag:cluster.k8s.amazonaws.com/name"),
+			Values: []string{fmt.Sprintf("%s-%s", groupName, clusterName)},
+		}}})
+
+	eniPageNum := 0
+	for paginator.HasMorePages() {
+		output, err := paginator.NextPage(ctx)
+		if err != nil {
+			err = nil
+			continue
+		}
+		for _, value := range output.NetworkInterfaces {
+			eniIds = append(eniIds, *value.NetworkInterfaceId)
+		}
+		eniPageNum++
+	}
+	return eniIds
+}
+
+func getSecurityGroupIds(ctx context.Context, ec2Client *ec2.Client, groupName string, clusterName string) []string {
+	var sgIds []string
+	sgPaginator := ec2.NewDescribeSecurityGroupsPaginator(ec2Client, &ec2.DescribeSecurityGroupsInput{
+		Filters: []ec2Types.Filter{{
+			Name:   aws.String("tag:aws:eks:cluster-name"),
+			Values: []string{fmt.Sprintf("%s-%s", groupName, clusterName)},
+		}},
+	}, func(o *ec2.DescribeSecurityGroupsPaginatorOptions) {
+		o.StopOnDuplicateToken = true
+	})
+
+	pageNum := 0
+	for sgPaginator.HasMorePages() {
+		output, err := sgPaginator.NextPage(ctx)
+		if err != nil {
+			err = nil
+			continue
+		}
+		for _, value := range output.SecurityGroups {
+			sgIds = append(sgIds, *value.GroupId)
+		}
+		pageNum++
+	}
+	return sgIds
+}
+
+func getSpotInstanceIds(ctx context.Context, taggingClient *resourcegroupstaggingapi.Client, groupName string, clusterName string) []string {
+	var instanceIds []string
+	paginator := resourcegroupstaggingapi.NewGetResourcesPaginator(taggingClient, &resourcegroupstaggingapi.GetResourcesInput{
 		ResourceTypeFilters: []string{"ec2:instance"},
 		TagFilters: []tagTypes.TagFilter{{
 			Key:    aws.String("aws:eks:cluster-name"),
@@ -590,31 +650,16 @@ func deleteSpotInstances(ctx context.Context, groupName string, groupId string, 
 	})
 
 	pageNum := 0
-	var instanceIds []string
 	for paginator.HasMorePages() {
 		output, err := paginator.NextPage(ctx)
 		if err != nil {
-			// TODO what do i want to do here?
-			log.Warn().Str("GroupID", groupId).Msg(err.Error())
 			err = nil
 			continue
 		}
 		for _, value := range output.ResourceTagMappingList {
-			// arn:aws:ec2:us-east-1:123456789012:instance/i-012abcd34efghi56
 			instanceIds = append(instanceIds, strings.Split(*value.ResourceARN, "/")[1])
 		}
 		pageNum++
 	}
-	if len(instanceIds) > 0 {
-		_, err := client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
-			InstanceIds: instanceIds,
-		})
-		if err != nil {
-			// TODO what do we want to do here? need to handle all the different cases?
-			log.Warn().Str("GroupID", groupId).Msg(err.Error())
-			err = nil
-		}
-	}
-	time.Sleep(30 * time.Second)
-	deleteSpotInstances(ctx, groupName, groupId, clusterName, client, taggingClient)
+	return instanceIds
 }
