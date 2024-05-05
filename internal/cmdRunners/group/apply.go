@@ -355,6 +355,14 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 					return
 				}
 			}
+			// handle output for alb dns name for environment
+			if dirName == "environment" {
+				err = saveEnvironmentAlbDnsName(mm, out, group.ID, dir.Name())
+				if err != nil {
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+					return
+				}
+			}
 		}(d)
 	}
 
@@ -477,4 +485,45 @@ func saveArgoCdCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec
 	}
 
 	return nil
+}
+
+func saveEnvironmentAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, envResourceLabel string) error {
+	for key, output := range outputs {
+		if key == "alb" {
+			var alb AlbMap
+			if err := json.Unmarshal(output.Value, &alb); err != nil {
+				return err
+			}
+			var envs []types.Environment
+			o := mm.Where(&envs, "Group.ID", groupID)
+			if o.Err != nil {
+				return o.Err
+			}
+			for _, e := range envs {
+				if e.ResourceLabel == envResourceLabel {
+					e.AlbDnsName = alb.DnsName
+					o = mm.Update(&e, "AlbDnsName", alb.DnsName)
+					if o.Err != nil {
+						return o.Err
+					}
+					break
+				}
+			}
+		}
+	}
+	return nil
+}
+
+type AlbMap struct {
+	Id               string                 `json:"id"`
+	DnsName          string                 `json:"dns_name"`
+	ArnSuffix        string                 `json:"arn_suffix"`
+	Arn              string                 `json:"arn"`
+	ListenerRules    map[string]interface{} `json:"listener_rules"`
+	Listeners        map[string]interface{} `json:"listeners"`
+	Route53Records   []string               `json:"route_53_records"`
+	SecurityGroupArn string                 `json:"security_group_arn"`
+	SecurityGroupId  string                 `json:"security_group_id"`
+	TargetGroups     map[string]interface{} `json:"target_groups"`
+	ZoneId           string                 `json:"zone_id"`
 }
