@@ -29,7 +29,7 @@ FROM 989911971741.dkr.ecr.us-east-1.amazonaws.com/dragonops-worker:latest as wor
 
 FROM alpine:3.18.3
 
-RUN apk add --no-cache bash git age
+RUN apk add --no-cache bash git age aws-cli
 
 WORKDIR /app
 
