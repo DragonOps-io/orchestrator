@@ -479,7 +479,8 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 	// go routine setup stuff
 	wg := &sync.WaitGroup{}
 	errors := make(chan error, 0)
-
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for _, d := range directories {
 		wg.Add(1)
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Destroying %s %s", dirName, d.Name()))
@@ -508,13 +509,12 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 				} else {
 					go func() {
 						select {
-						case <-ctx.Done():
+						case <-cancelCtx.Done():
 							return
 						default:
-							time.Sleep(30 * time.Second)
-							deleteSpotInstances(ctx, group.Name, group.ID, cluster.Name, ec2Client, tagClient)
 						}
-						return
+						time.Sleep(30 * time.Second)
+						deleteSpotInstances(cancelCtx, group.Name, group.ID, cluster.Name, ec2Client, tagClient)
 					}()
 				}
 			}
