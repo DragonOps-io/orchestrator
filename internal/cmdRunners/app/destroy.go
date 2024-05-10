@@ -214,7 +214,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 			}
 		} else {
-			_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application-static", appPath), *execPath, roleToAssume)
+			_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/static_application", appPath), *execPath, roleToAssume)
 			if err != nil {
 				ue := updateEnvironmentStatusesToDestroyFailed(app, environments, mm, err.Error())
 				if ue != nil {
