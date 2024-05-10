@@ -237,7 +237,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 			}
 		} else {
-			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application-static", appPath), *execPath, roleToAssume)
+			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/static_application", appPath), *execPath, roleToAssume)
 			if err != nil {
 				ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
 				if ue != nil {
