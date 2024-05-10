@@ -105,7 +105,11 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	})
 
 	if !isDryRun {
-		os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
+		if os.Getenv("IS_LOCAL") == "true" {
+			os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "./app/tmpl.tgz.age")
+		} else {
+			os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
+		}
 
 		log.Debug().Str("AppID", app.ID).Msg("Preparing Terraform")
 
@@ -227,24 +231,13 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		}
 
 		var out map[string]tfexec.OutputMeta
-		if app.SubType != "static" {
-			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
-			if err != nil {
-				ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
-				if ue != nil {
-					return ue
-				}
-				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+		out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
+		if err != nil {
+			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+			if ue != nil {
+				return ue
 			}
-		} else {
-			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/static_application", appPath), *execPath, roleToAssume)
-			if err != nil {
-				ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
-				if ue != nil {
-					return ue
-				}
-				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
-			}
+			return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
 
 		log.Debug().Str("AppID", app.ID).Msg("Updating app status")
