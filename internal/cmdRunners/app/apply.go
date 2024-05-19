@@ -18,6 +18,7 @@ import (
 )
 
 type AppUrl string
+type CloudfrontDistroID string
 
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
 	log.Debug().
@@ -250,6 +251,14 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 					fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
 				}
 				app.Environments[idx].Endpoint = string(appUrl)
+
+				if app.SubType == "static" {
+					var cfDistroID CloudfrontDistroID
+					if err = json.Unmarshal(out["cloudfront_distribution_id"].Value, &cfDistroID); err != nil {
+						fmt.Printf("Error decoding output value for key %s: %s\n", "cloudfront_distribution_id", err)
+					}
+					app.Environments[idx].CloudfrontDistroID = string(cfDistroID)
+				}
 				break
 			}
 		}
