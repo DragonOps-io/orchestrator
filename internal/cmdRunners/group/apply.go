@@ -339,17 +339,9 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
-			// handle output for argocd credentials
-			if dirName == "cluster" {
-				err = saveArgoCdCredsToCluster(mm, out, group.ID, dir.Name())
-				if err != nil {
-					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
-					return
-				}
-			}
 			// handle output for grafana credentials
 			if dirName == "cluster_grafana" {
-				err = saveGrafanaCredsToCluster(mm, out, group.ID, dir.Name())
+				err = saveCredsToCluster(mm, out, group.ID, dir.Name())
 				if err != nil {
 					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 					return
@@ -382,105 +374,49 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 	return nil
 }
 
-func saveGrafanaCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, clusterResourceLabel string) error {
+type clusterCredentials struct {
+	types.GrafanaCredentials
+	types.ArgoCdCredentials
+}
+
+type clusterEndpoints struct {
+	GrafanaUrl string `json:"grafana_url"`
+	ArgoCdUrl  string `json:"argocd_url"`
+}
+
+func saveCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, clusterResourceLabel string) error {
+	var creds clusterCredentials
+	var urls clusterEndpoints
+
 	for key, output := range outputs {
 		if key == "cluster_credentials" {
-			var creds types.GrafanaCredentials
 			if err := json.Unmarshal(output.Value, &creds); err != nil {
 				return err
 			}
-			var clusters []types.Cluster
-			o := mm.Where(&clusters, "Group.ID", groupID)
-			if o.Err != nil {
-				return o.Err
-			}
-			for _, cluster := range clusters {
-				if cluster.ResourceLabel == clusterResourceLabel {
-					cluster.Metadata.Grafana.GrafanaCredentials = creds
-					o = mm.Update(&cluster, "Metadata", cluster.Metadata)
-					if o.Err != nil {
-						return o.Err
-					}
-					break
-				}
-			}
 		}
 		if key == "cluster_metadata" {
-			var endpoint struct {
-				GrafanaUrl string `json:"grafana_url"`
-			}
-			if err := json.Unmarshal(output.Value, &endpoint); err != nil {
+			if err := json.Unmarshal(output.Value, &urls); err != nil {
 				return err
-			}
-			var clusters []types.Cluster
-			o := mm.Where(&clusters, "Group.ID", groupID)
-			if o.Err != nil {
-				return o.Err
-			}
-			for _, cluster := range clusters {
-				if cluster.ResourceLabel == clusterResourceLabel {
-					cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: endpoint.GrafanaUrl}
-					o = mm.Update(&cluster, "Metadata", cluster.Metadata)
-					if o.Err != nil {
-						return o.Err
-					}
-					break
-				}
 			}
 		}
 	}
 
-	return nil
-}
-
-func saveArgoCdCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, clusterResourceLabel string) error {
-	for key, output := range outputs {
-		if key == "cluster_credentials" {
-			var creds types.ArgoCdCredentials
-			if err := json.Unmarshal(output.Value, &creds); err != nil {
-				return err
-			}
-			creds.Username = "admin"
-			var clusters []types.Cluster
-			o := mm.Where(&clusters, "Group.ID", groupID)
+	var clusters []types.Cluster
+	o := mm.Where(&clusters, "Group.ID", groupID)
+	if o.Err != nil {
+		return o.Err
+	}
+	for _, cluster := range clusters {
+		if cluster.ResourceLabel == clusterResourceLabel {
+			cluster.Metadata.Grafana.GrafanaCredentials = creds.GrafanaCredentials
+			cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.GrafanaUrl}
+			cluster.Metadata.ArgoCd.ArgoCdCredentials = creds.ArgoCdCredentials
+			cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.ArgoCdUrl}
+			o = mm.Update(&cluster, "Metadata", cluster.Metadata)
 			if o.Err != nil {
 				return o.Err
 			}
-			for _, cluster := range clusters {
-				if cluster.ResourceLabel == clusterResourceLabel {
-					cluster.Metadata.ArgoCd = types.ArgoCdMetadata{
-						ArgoCdCredentials: creds,
-					}
-					o = mm.Update(&cluster, "Metadata", cluster.Metadata)
-					if o.Err != nil {
-						return o.Err
-					}
-					break
-				}
-			}
-		}
-		if key == "endpoints" {
-			var endpoint struct {
-				ArgoCdUrl string `json:"argocd"`
-			}
-			if err := json.Unmarshal(output.Value, &endpoint); err != nil {
-				return err
-			}
-			var clusters []types.Cluster
-			o := mm.Where(&clusters, "Group.ID", groupID)
-			if o.Err != nil {
-				return o.Err
-			}
-			for _, cluster := range clusters {
-				if cluster.ResourceLabel == clusterResourceLabel {
-					cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{RootDomain: endpoint.ArgoCdUrl}
-					o = mm.Update(&cluster, "Metadata", cluster.Metadata)
-					if o.Err != nil {
-						return o.Err
-					}
-					break
-				}
-			}
+			break
 		}
 	}
 
