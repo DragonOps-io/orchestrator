@@ -259,8 +259,8 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 					}
 					app.Environments[idx].CloudfrontDistroID = string(cfDistroID)
 				}
-				break
 			}
+			break
 		}
 		o := mm.Save(&app)
 		if o.Err != nil {
