@@ -203,7 +203,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 		if env.Group.Account.CrossAccountRoleArn != nil {
 			roleToAssume = env.Group.Account.CrossAccountRoleArn
 		}
-		// apply terraform or return an error
+
 		_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
 		if err != nil {
 			ue := updateEnvironmentStatusesToDestroyFailed(app, environments, mm, err.Error())
