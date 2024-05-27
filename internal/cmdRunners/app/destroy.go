@@ -204,27 +204,17 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 			roleToAssume = env.Group.Account.CrossAccountRoleArn
 		}
 		// apply terraform or return an error
-		if app.SubType != "static" {
-			_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
-			if err != nil {
-				ue := updateEnvironmentStatusesToDestroyFailed(app, environments, mm, err.Error())
-				if ue != nil {
-					return ue
-				}
-				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+		_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application", appPath), *execPath, roleToAssume)
+		if err != nil {
+			ue := updateEnvironmentStatusesToDestroyFailed(app, environments, mm, err.Error())
+			if ue != nil {
+				return ue
 			}
-		} else {
-			_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/static_application", appPath), *execPath, roleToAssume)
-			if err != nil {
-				ue := updateEnvironmentStatusesToDestroyFailed(app, environments, mm, err.Error())
-				if ue != nil {
-					return ue
-				}
-				return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
-			}
+			return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
 
 		log.Debug().Str("AppID", app.ID).Msg("Updating app status")
+
 		for idx := range app.Environments {
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
 				app.Environments[idx].Status = "DESTROYED"
