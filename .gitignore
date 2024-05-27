@@ -2,3 +2,5 @@ orchestrator
 groups/
 .idea/
 .DS_Store
+apps/
+app/
