@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - prod
+      - preprod
 
 jobs:
   build_and_push:

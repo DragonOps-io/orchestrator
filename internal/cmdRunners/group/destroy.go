@@ -548,6 +548,7 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 func deleteSpotInstances(ctx context.Context, groupName string, groupId string, clusterName string, ec2Client *ec2.Client, taggingClient *resourcegroupstaggingapi.Client) {
 	// first retrieve all instances with sepcific tag
 	instanceIds := getSpotInstanceIds(ctx, taggingClient, groupName, clusterName)
+	log.Info().Str("GroupID", groupId).Msg(fmt.Sprintf("Found %d instances to delete: %v", len(instanceIds), instanceIds))
 	if len(instanceIds) > 0 {
 		_, err := ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
 			InstanceIds: instanceIds,
