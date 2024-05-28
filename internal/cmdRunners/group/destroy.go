@@ -497,7 +497,10 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 				// get the cluster so we have the name
 				var clusters []types.Cluster
 				var cluster *types.Cluster
-				mm.Where(&clusters, "ResourceLabel", clusterResourceLabel)
+				o := mm.Where(&clusters, "ResourceLabel", clusterResourceLabel)
+				if o.Err != nil {
+					log.Warn().Msg(fmt.Sprintf("error getting clusters: %s", o.Err.Error()))
+				}
 				for idx := range clusters {
 					if clusters[idx].Group.ResourceLabel == group.ResourceLabel {
 						cluster = &clusters[idx]
