@@ -89,7 +89,7 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            WORKER_VERSION=${{ env.worker_tag }}
+            WORKER_VERSION="${{ env.worker_tag }}"
 
       - name: Push Tag
         run: |
