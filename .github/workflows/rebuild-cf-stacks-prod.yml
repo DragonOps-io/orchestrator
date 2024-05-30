@@ -19,5 +19,5 @@ jobs:
                 owner: 'DragonOps-io',
                 repo: 'cloudformation-stacks',
                 workflow_id: 'prod.yml',
-                ref: 'main'
+                ref: 'prod'
             })
