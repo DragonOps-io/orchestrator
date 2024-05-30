@@ -1,0 +1,23 @@
+# trigger-repob-workflow.yml
+name: Trigger CF Stacks Workflow
+on:
+  workflow_run:
+    workflows: [build-prod] # Name of GitHub workflow to trigger in target repository
+    types:
+      - completed
+
+jobs:
+  TriggerOrchestratorRebuildProd:
+    if: github.event.workflow_run.conclusion == 'success' # Run only when workflow run has succeeded, i.e. all jobs have succeeded
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT }} # Fine-grained GitHub PAT that was saved as repository secret
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+                owner: 'DragonOps-io',
+                repo: 'cloudformation-stacks',
+                workflow_id: 'prod.yml',
+                ref: 'main'
+            })
