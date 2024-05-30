@@ -1,6 +1,6 @@
+ARG WORKER_VERSION="latest"
 FROM golang:1.22-alpine as build
 
-ARG WORKER_VERSION="latest"
 ENV GOPRIVATE="github.com/DragonOps-io/*"
 RUN apk add --no-cache file git rsync openssh-client
 RUN mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
@@ -26,6 +26,8 @@ COPY . .
 RUN   --mount=type=ssh \
         CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o .
 
+
+ARG WORKER_VERSION
 FROM 989911971741.dkr.ecr.us-east-1.amazonaws.com/dragonops-worker:${WORKER_VERSION} as worker
 
 FROM alpine:3.18.3
