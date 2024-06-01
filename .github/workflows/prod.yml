@@ -93,7 +93,7 @@ jobs:
       - name: Push Tag
         run: |
           new_tag=v${{ steps.bump.outputs.new_version }}
-          if [[ $(git rev-list ${{ env.latest_tag }}..HEAD --count) -gt 0 ]]; then
+          if [[ $(git rev-list v${{ env.latest_tag }}..HEAD --count) -gt 0 ]]; then
             echo "Hello"
             echo $(git remote -v)
             git config user.name "GitHub Actions"
