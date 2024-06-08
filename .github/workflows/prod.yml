@@ -93,13 +93,9 @@ jobs:
       - name: Push Tag
         run: |
           new_tag=v${{ steps.bump.outputs.new_version }}
-          if [[ $(git rev-list v${{ env.latest_tag }}..HEAD --count) -gt 0 ]]; then
-            echo "Hello"
-            echo $(git remote -v)
-            git config user.name "GitHub Actions"
-            git config user.email "github-actions@users.noreply.github.com"
-            git tag $new_tag
-            git push origin $new_tag
-          else
-            echo "No new commits since last tag. Skipping tag push."
-          fi
+          echo "Hello"
+          echo $(git remote -v)
+          git config user.name "GitHub Actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git tag $new_tag
+          git push origin $new_tag
