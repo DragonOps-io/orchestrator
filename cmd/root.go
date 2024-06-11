@@ -17,5 +17,6 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().BoolP("dry-run", "d", false, "Used to skip terraform deploy/deletion. For development purposes only.")
 	rootCmd.AddCommand(newGroupCmd())
 	rootCmd.AddCommand(newAppCommand())
+	rootCmd.AddCommand(newPlanCmd())
 	return rootCmd
 }

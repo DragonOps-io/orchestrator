@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/DragonOps-io/orchestrator/internal/cmdRunners/group"
+	"github.com/DragonOps-io/orchestrator/internal/cmdRunners/plan"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/rs/zerolog/log"
@@ -10,24 +10,22 @@ import (
 	"os"
 )
 
-func newGroupCmd() *cobra.Command {
+func newPlanCmd() *cobra.Command {
 	environmentCmd := &cobra.Command{
-		Use:   "group",
-		Short: "Interact with groups",
+		Use: "plan",
+		//Short: "Interact with groups",
 	}
-	environmentCmd.AddCommand(newGroupApplyCmd())
-	environmentCmd.AddCommand(newGroupDestroyCmd())
+	environmentCmd.AddCommand(newPlanGroupCmd())
 	return environmentCmd
 }
 
-func newGroupApplyCmd() *cobra.Command {
+func newPlanGroupCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "apply",
-		Short: "Apply a group stack",
+		Use: "group",
+		//Short: "Apply a group stack",
 		Run: func(cmd *cobra.Command, args []string) {
-			isDryRun, _ := cmd.Flags().GetBool("dry-run")
 
-			payload, err := group.GetPayload()
+			payload, err := plan.GetPayload()
 			if err != nil {
 				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
@@ -35,42 +33,13 @@ func newGroupApplyCmd() *cobra.Command {
 
 			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
 			if err != nil {
-				log.Error().Str("InstantiateMagicModelOperator", "ApplyGroup").Msg(fmt.Sprintf("Encountered an err: %s", err))
+				log.Error().Str("InstantiateMagicModelOperator", "PlanGroup").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
 			}
 
-			err = group.Apply(cmd.Context(), *payload, mm, isDryRun)
+			err = plan.Plan(cmd.Context(), *payload, mm)
 			if err != nil {
-				log.Error().Str("ApplyGroup", err.Error()).Msg(fmt.Sprintf("Encountered an err with applying group with id %s: %s", payload.GroupID, err))
-				os.Exit(1)
-			}
-		},
-	}
-	return cmd
-}
-
-func newGroupDestroyCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "destroy",
-		Short: "Destroy a group stack",
-		Run: func(cmd *cobra.Command, args []string) {
-			isDryRun, _ := cmd.Flags().GetBool("dry-run")
-
-			payload, err := group.GetPayload()
-			if err != nil {
-				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
-				os.Exit(1)
-			}
-
-			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
-			if err != nil {
-				log.Error().Str("InstantiateMagicModelOperator", "DestroyGroup").Msg(fmt.Sprintf("Encountered an err: %s", err))
-				os.Exit(1)
-			}
-
-			err = group.Destroy(cmd.Context(), *payload, mm, isDryRun)
-			if err != nil {
-				log.Error().Str("DestroyGroup", err.Error()).Msg(fmt.Sprintf("Encountered an err with removing group with id %s: %s", payload.GroupID, err))
+				log.Error().Str("PlanGroup", err.Error()).Msg(fmt.Sprintf("Encountered an err with planning group with id %s: %s", payload.GroupID, err))
 				os.Exit(1)
 			}
 		},

@@ -1,4 +1,4 @@
-package group
+package plan
 
 import (
 	"encoding/json"
@@ -17,6 +17,7 @@ type Payload struct {
 	JobName  string `json:"job_name"`
 	Region   string `json:"region"`
 	UserName string `json:"user_name"`
+	PlanId   string `json:"plan_id"`
 }
 
 func GetPayload() (*Payload, error) {

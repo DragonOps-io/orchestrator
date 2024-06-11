@@ -364,7 +364,7 @@ func deleteNameServersFromDragonOps(apiKey string, roleArn string, region string
 		if strings.Contains(string(body), "but it was not found") {
 			return nil
 		}
-		return fmt.Errorf("Error deleting name servers from DragonOps. Error code: %s, Message: %s.", resp.StatusCode, body)
+		return fmt.Errorf("Error deleting name servers from DragonOps. Error code: %d, Message: %s.", resp.StatusCode, body)
 	}
 	return nil
 }
