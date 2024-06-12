@@ -220,10 +220,6 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		if o.Err != nil {
 			return o.Err
 		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			return o.Err
-		}
 		return fmt.Errorf("Error running `worker group apply` for group with id %s: %s: %s", group.ID, err, *msg)
 	}
 

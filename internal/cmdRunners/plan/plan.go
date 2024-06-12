@@ -158,7 +158,7 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	}
 
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
-	err = formatWithWorkerAndPlan(ctx, accounts[0].AwsRegion, *accounts[0].StateBucketName, mm, group, execPath, roleToAssume, payload.PlanId)
+	err = formatWithWorkerAndPlan(ctx, cfg, accounts[0].AwsRegion, *accounts[0].StateBucketName, mm, group, execPath, roleToAssume, payload.PlanId)
 	if err != nil {
 		o = mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -197,7 +197,7 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	return nil
 }
 
-func formatWithWorkerAndPlan(ctx context.Context, masterAcctRegion string, stateBucketName string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, planId string) error {
+func formatWithWorkerAndPlan(ctx context.Context, awsCfg aws.Config, masterAcctRegion string, stateBucketName string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, planId string) error {
 	log.Debug().Str("GroupID", group.ID).Msg("Templating Terraform with correct values")
 
 	command := fmt.Sprintf("/app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
@@ -221,8 +221,8 @@ func formatWithWorkerAndPlan(ctx context.Context, masterAcctRegion string, state
 
 	log.Debug().Str("GroupID", group.ID).Msg("planning group Terraform")
 	// can't use a for loop because we need to do it in order
-	// apply networks all together
-	err = plan(ctx, group, stateBucketName, execPath, roleToAssume, "network", planId)
+	// plan networks all together
+	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "network", planId)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -232,11 +232,11 @@ func formatWithWorkerAndPlan(ctx context.Context, masterAcctRegion string, state
 		if o.Err != nil {
 			return o.Err
 		}
-		return fmt.Errorf("Error running apply for network stacks in group with id %s: %s: %s", group.ID, err, *msg)
+		return fmt.Errorf("Error running plan for network stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
 
-	// apply clusters all together
-	err = plan(ctx, group, stateBucketName, execPath, roleToAssume, "cluster", planId)
+	// plan clusters all together
+	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "cluster", planId)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -246,11 +246,11 @@ func formatWithWorkerAndPlan(ctx context.Context, masterAcctRegion string, state
 		if o.Err != nil {
 			return o.Err
 		}
-		return fmt.Errorf("Error running apply for cluster stacks in group with id %s: %s: %s", group.ID, err, *msg)
+		return fmt.Errorf("Error running plan for cluster stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
 
-	// apply cluster grafana all together
-	err = plan(ctx, group, stateBucketName, execPath, roleToAssume, "cluster_grafana", planId)
+	// plan cluster grafana all together
+	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "cluster_grafana", planId)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -260,11 +260,11 @@ func formatWithWorkerAndPlan(ctx context.Context, masterAcctRegion string, state
 		if o.Err != nil {
 			return o.Err
 		}
-		return fmt.Errorf("Error running apply for cluster_grafana stacks in group with id %s: %s: %s", group.ID, err, *msg)
+		return fmt.Errorf("Error running plan for cluster_grafana stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
 
-	// apply environments all together
-	err = plan(ctx, group, stateBucketName, execPath, roleToAssume, "environment", planId)
+	// plan environments all together
+	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "environment", planId)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -274,11 +274,11 @@ func formatWithWorkerAndPlan(ctx context.Context, masterAcctRegion string, state
 		if o.Err != nil {
 			return o.Err
 		}
-		return fmt.Errorf("Error running apply for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
+		return fmt.Errorf("Error running plan for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
 
-	// apply static environments all together
-	err = plan(ctx, group, stateBucketName, execPath, roleToAssume, "environment-static", planId)
+	// plan static environments all together
+	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "environment-static", planId)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -288,11 +288,11 @@ func formatWithWorkerAndPlan(ctx context.Context, masterAcctRegion string, state
 		if o.Err != nil {
 			return o.Err
 		}
-		return fmt.Errorf("Error running apply for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
+		return fmt.Errorf("Error running plan for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
 
-	// apply environments all together
-	err = plan(ctx, group, stateBucketName, execPath, roleToAssume, "rds", planId)
+	// plan environments all together
+	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "rds", planId)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -302,12 +302,12 @@ func formatWithWorkerAndPlan(ctx context.Context, masterAcctRegion string, state
 		if o.Err != nil {
 			return o.Err
 		}
-		return fmt.Errorf("Error running apply for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
+		return fmt.Errorf("Error running plan for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
 	return nil
 }
 
-func plan(ctx context.Context, group types.Group, stateBucketName string, execPath *string, roleToAssume *string, dirName string, planId string) error {
+func plan(ctx context.Context, awsCfg aws.Config, group types.Group, stateBucketName string, execPath *string, roleToAssume *string, dirName string, planId string) error {
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	// /groups/groupId/network --> directoryPath
 	directories, _ := os.ReadDir(directoryPath)
@@ -325,9 +325,9 @@ func plan(ctx context.Context, group types.Group, stateBucketName string, execPa
 		// /groups/groupId/network/network_resource_label_here/terraform files --> path
 		go func(dir os.DirEntry) {
 			defer wg.Done()
-			// apply terraform or return an error
+			// plan terraform or return an error
 			log.Debug().Str("GroupID", group.ID).Msg(path)
-			err := terraform.PlanTerraform(ctx, planId, stateBucketName, path, *execPath, roleToAssume)
+			err := terraform.PlanTerraform(ctx, awsCfg, planId, stateBucketName, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return

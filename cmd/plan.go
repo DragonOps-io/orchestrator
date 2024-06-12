@@ -13,7 +13,6 @@ import (
 func newPlanCmd() *cobra.Command {
 	environmentCmd := &cobra.Command{
 		Use: "plan",
-		//Short: "Interact with groups",
 	}
 	environmentCmd.AddCommand(newPlanGroupCmd())
 	return environmentCmd
@@ -22,9 +21,7 @@ func newPlanCmd() *cobra.Command {
 func newPlanGroupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "group",
-		//Short: "Apply a group stack",
 		Run: func(cmd *cobra.Command, args []string) {
-
 			payload, err := plan.GetPayload()
 			if err != nil {
 				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
