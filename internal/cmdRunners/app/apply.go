@@ -154,6 +154,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	}
 	err = updateEnvironmentStatusesToApplied(app, appEnvironmentsToApply, mm)
 	if err != nil {
+		// random
 		return err
 	}
 
