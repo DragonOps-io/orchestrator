@@ -7,11 +7,6 @@ repos:
       language: system
       pass_filenames: false
       types: [go]
-    - id: rm-api
-      name: rm api
-      entry: rm -f ./api
-      language: system
-      pass_filenames: false
     - id: go-mod-tidy
       name: go mod tidy
       entry: bash -c 'go mod tidy && git diff --exit-code'
