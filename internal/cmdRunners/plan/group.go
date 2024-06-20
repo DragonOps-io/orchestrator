@@ -21,22 +21,27 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	log.Debug().
 		Str("GroupID", payload.GroupID).
 		Msg("Looking for group with matching ID")
-
+	// todo should save status of current group and then readdply it?
+	// for example, fi the status is APPLY_FAILED, then we PLAN, we kind of want the status to go back to APPLY_FAILED, not APPLIED
 	group := types.Group{}
 	o := mm.Find(&group, payload.GroupID)
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", payload.GroupID).Msg("Error finding group")
 		return fmt.Errorf("Error when trying to retrieve group with id %s: %s", payload.GroupID, o.Err)
 	}
 	log.Debug().Str("GroupID", group.ID).Msg("Found group")
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
+		log.Err(fmt.Errorf("no RECEIPT_HANDLE variable found")).Str("GroupID", group.ID).Msg("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", "No RECEIPT_HANDLE variable found.")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
@@ -45,12 +50,15 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	var accounts []types.Account
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", o.Err.Error())
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", aco.Err)
@@ -62,12 +70,15 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 		return nil
 	})
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", err.Error())
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return err
@@ -75,12 +86,15 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	// get the doApiKey from secrets manager, not the payload
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", err.Error())
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return err
@@ -88,24 +102,30 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", err.Error())
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
 	}
 
 	if !authResponse.IsValid {
+		log.Err(fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")).Str("GroupID", group.ID).Msg("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", "The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
@@ -118,12 +138,15 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	var groupClusters []types.Cluster
 	o = mm.Where(&groupClusters, "Group.ID", group.ID)
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 		po := mm.Update(&group, "Status", "APPLY_FAILED")
 		if po.Err != nil {
+			log.Err(po.Err).Str("GroupID", group.ID).Msg(po.Err.Error())
 			return po.Err
 		}
 		po = mm.Update(&group, "FailedReason", o.Err.Error())
 		if po.Err != nil {
+			log.Err(po.Err).Str("GroupID", group.ID).Msg(po.Err.Error())
 			return po.Err
 		}
 		return o.Err
@@ -146,12 +169,15 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	log.Debug().Str("GroupID", group.ID).Msg("Preparing Terraform")
 	execPath, err = terraform.PrepareTerraform(ctx)
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 		o = mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
+			log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 			return o.Err
 		}
 		o = mm.Update(&group, "FailedReason", err.Error())
 		if o.Err != nil {
+			log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 			return o.Err
 		}
 		return err
@@ -160,12 +186,15 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
 	err = formatWithWorkerAndPlan(ctx, cfg, accounts[0].AwsRegion, *accounts[0].StateBucketName, mm, group, execPath, roleToAssume, payload.PlanId)
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 		o = mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
+			log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 			return o.Err
 		}
 		o = mm.Update(&group, "FailedReason", err.Error())
 		if o.Err != nil {
+			log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 			return o.Err
 		}
 		return err
@@ -174,10 +203,12 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	log.Debug().Str("GroupID", group.ID).Msg("Updating group status")
 	o = mm.Update(&group, "Status", "APPLIED")
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 		return o.Err
 	}
 	o = mm.Update(&group, "FailedReason", "")
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 		return o.Err
 	}
 
@@ -192,6 +223,7 @@ func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 		ReceiptHandle: &receiptHandle,
 	})
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 		return err
 	}
 	return nil
