@@ -134,6 +134,11 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			}
 			return err
 		}
+	} else {
+		err = updateEnvironmentStatusesToApplied(app, appEnvironmentsToApply, mm)
+		if err != nil {
+			return err
+		}
 	}
 
 	queueParts := strings.Split(*app.AppSqsArn, ":")
@@ -146,17 +151,14 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		ReceiptHandle: &receiptHandle,
 	})
 	if err != nil {
-		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
-		if ue != nil {
-			return ue
-		}
+		log.Err(err).Str("AppID", app.ID).Msg("Error deleting message from queue")
 		return err
 	}
-	err = updateEnvironmentStatusesToApplied(app, appEnvironmentsToApply, mm)
-	if err != nil {
-		return err
-	}
-
+	//err = updateEnvironmentStatusesToApplied(app, appEnvironmentsToApply, mm)
+	//if err != nil {
+	//	return err
+	//}
+	log.Info().Str("AppID", app.ID).Msg("Successfully applied app")
 	// TODO github.com/aws/aws-sdk-go-v2/service/organizations --> to get the organization. if we don't have an organization.... i guess we can update the policy by getting it first, then adding the target account id to it.
 	// so, 1. check for org. if exists, all good. set flag on master account saying IsOrganization
 	// 2. if doesn't exist/not an org, set flag saying IsOrganization is false, see if target account is master account. If yes, just have policy say master account can pull. If NO, have policy saying master account & target account can pull
@@ -168,10 +170,8 @@ func updateEnvironmentStatusesToApplyFailed(app types.App, environmentsToApply [
 	for _, env := range environmentsToApply {
 		for idx := range app.Environments {
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "APPLYING" {
-				//if env.ResourceLabel == k && appEnvConfig.Status == "APPLYING" {
 				app.Environments[idx].Status = "APPLY_FAILED"
 				app.Environments[idx].FailedReason = err.Error()
-				//app.Environments[idx] = appEnvConfig
 			}
 		}
 	}
@@ -246,6 +246,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		for idx := range app.Environments {
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
 				app.Environments[idx].Status = "APPLIED"
+				app.Environments[idx].FailedReason = ""
 				var appUrl AppUrl
 				if err = json.Unmarshal(out["app_url"].Value, &appUrl); err != nil {
 					fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
