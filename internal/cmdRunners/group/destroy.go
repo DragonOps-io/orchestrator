@@ -464,7 +464,18 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 		}
 		return fmt.Errorf("Error running `worker group apply` for group with id %s: %s: %s", group.ID, err, *msg)
 	}
-
+	err = destroy(ctx, mm, group, execPath, roleToAssume, "environment-static", cfg)
+	if err != nil {
+		o := mm.Update(&group, "Status", "DESTROY_FAILED")
+		if o.Err != nil {
+			return o.Err
+		}
+		o = mm.Update(&group, "FailedReason", err.Error())
+		if o.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("Error running destroy for environment-static stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	}
 	log.Debug().Str("GroupID", group.ID).Msg("Destroying group Terraform")
 	// can't use a for loop because we need to do it in order
 	// destroy environments all together
@@ -480,7 +491,18 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 		}
 		return fmt.Errorf("Error running destroy for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
-
+	err = destroy(ctx, mm, group, execPath, roleToAssume, "rds", cfg)
+	if err != nil {
+		o := mm.Update(&group, "Status", "DESTROY_FAILED")
+		if o.Err != nil {
+			return o.Err
+		}
+		o = mm.Update(&group, "FailedReason", err.Error())
+		if o.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("Error running destroy for rds stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	}
 	// destroy cluster grafana all together
 	err = destroy(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg)
 	if err != nil {
