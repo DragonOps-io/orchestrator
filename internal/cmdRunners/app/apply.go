@@ -134,6 +134,11 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			}
 			return err
 		}
+	} else {
+		err = updateEnvironmentStatusesToApplied(app, appEnvironmentsToApply, mm)
+		if err != nil {
+			return err
+		}
 	}
 
 	queueParts := strings.Split(*app.AppSqsArn, ":")
