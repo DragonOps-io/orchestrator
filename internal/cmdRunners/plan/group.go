@@ -17,7 +17,7 @@ import (
 	"sync"
 )
 
-func Plan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
+func GroupPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	log.Debug().
 		Str("GroupID", payload.GroupID).
 		Msg("Looking for group with matching ID")
@@ -359,7 +359,7 @@ func plan(ctx context.Context, awsCfg aws.Config, group types.Group, stateBucket
 			defer wg.Done()
 			// plan terraform or return an error
 			log.Debug().Str("GroupID", group.ID).Msg(path)
-			err := terraform.PlanTerraform(ctx, awsCfg, planId, stateBucketName, path, *execPath, roleToAssume)
+			err := terraform.PlanGroupTerraform(ctx, awsCfg, planId, stateBucketName, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
