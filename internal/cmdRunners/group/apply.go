@@ -323,7 +323,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		if o.Err != nil {
 			return o.Err
 		}
-		return fmt.Errorf("Error running apply for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
+		return fmt.Errorf("Error running apply for environment-static stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
 
 	// apply environments all together
@@ -337,7 +337,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		if o.Err != nil {
 			return o.Err
 		}
-		return fmt.Errorf("Error running apply for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
+		return fmt.Errorf("Error running apply for rds stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
 	return nil
 }
