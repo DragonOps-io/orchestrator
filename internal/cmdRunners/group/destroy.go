@@ -361,7 +361,11 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		}
 		return err
 	}
-
+	aco := mm.Update(&group, "Status", "DESTROYED")
+	if aco.Err != nil {
+		log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
+		return aco.Err
+	}
 	log.Debug().Str("GroupID", group.ID).Msg("Group destroyed. Deleting record from DynamoDb.")
 	o = mm.SoftDelete(&group)
 	if o.Err != nil {
