@@ -54,7 +54,7 @@ jobs:
       - name: Get latest tag
         id: gettag
         run: |
-          latest_tag=$(git describe --tags `git rev-list --tags --max-count=1`)
+          latest_tag=$(git tag --sort=committerdate | tail -1)
           echo "latest_tag=${latest_tag#v}" >> $GITHUB_ENV
 
       - name: Get Latest Worker Tag
