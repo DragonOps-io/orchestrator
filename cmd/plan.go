@@ -11,11 +11,12 @@ import (
 )
 
 func newPlanCmd() *cobra.Command {
-	environmentCmd := &cobra.Command{
+	planCmd := &cobra.Command{
 		Use: "plan",
 	}
-	environmentCmd.AddCommand(newPlanGroupCmd())
-	return environmentCmd
+	planCmd.AddCommand(newPlanGroupCmd())
+	planCmd.AddCommand(newPlanAppCmd())
+	return planCmd
 }
 
 func newPlanGroupCmd() *cobra.Command {
@@ -34,9 +35,35 @@ func newPlanGroupCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			err = plan.Plan(cmd.Context(), *payload, mm)
+			err = plan.GroupPlan(cmd.Context(), *payload, mm)
 			if err != nil {
 				log.Error().Str("PlanGroup", err.Error()).Msg(fmt.Sprintf("Encountered an err with planning group with id %s: %s", payload.GroupID, err))
+				os.Exit(1)
+			}
+		},
+	}
+	return cmd
+}
+
+func newPlanAppCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "app",
+		Run: func(cmd *cobra.Command, args []string) {
+			payload, err := plan.GetPayload()
+			if err != nil {
+				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
+				os.Exit(1)
+			}
+
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			if err != nil {
+				log.Error().Str("InstantiateMagicModelOperator", "PlanApp").Msg(fmt.Sprintf("Encountered an err: %s", err))
+				os.Exit(1)
+			}
+
+			err = plan.AppPlan(cmd.Context(), *payload, mm)
+			if err != nil {
+				log.Error().Str("PlanApp", err.Error()).Msg(fmt.Sprintf("Encountered an err with planning app with id %s: %s", payload.AppID, err))
 				os.Exit(1)
 			}
 		},

@@ -1,14 +1,37 @@
 name: build-dev
+
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches-ignore:
+      - "main"
+      - "prod"
+      - "preprod"
 
 jobs:
+  ShouldRun:
+    runs-on: ubuntu-latest
+    outputs:
+      condition: ${{ steps.condition.outputs.condition }}
+    steps:
+      - id: condition
+        run: |
+          echo ${{ github.ref_name }}
+          echo ${{ github.head_ref }}
+          PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          if [[ "${{ github.ref_name }}" = *"main"* ]] || [[ "${{ github.head_ref }}" = *"main"* ]] || [[ "${{ github.ref_name }}" =~ $PATTERN ]] || [[ "${{ github.head_ref }}" =~ $PATTERN ]]; then
+             echo "condition=false" >> $GITHUB_OUTPUT
+             echo false
+          else
+             echo "condition=true" >> $GITHUB_OUTPUT  
+             echo true
+          fi
+
   build_and_push:
     name: Build And Push Dev Image
     runs-on: ubuntu-latest
+    if: ${{ needs.ShouldRun.outputs.condition == 'true' }}
+    needs: [ShouldRun]
     permissions:
       contents: read
       id-token: write
@@ -18,7 +41,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.DEV_ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.DEV_SECRET_KEY }}

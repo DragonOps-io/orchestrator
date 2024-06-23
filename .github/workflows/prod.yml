@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.PROD_ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.PROD_SECRET_KEY }}
@@ -52,26 +52,10 @@ jobs:
           private-key-name: github-ppk
 
       - name: Get latest tag
+        id: gettag
         run: |
-          latest_tag=$(git describe --tags `git rev-list --tags --max-count=1`)
+          latest_tag=$(git tag --sort=committerdate | tail -1)
           echo "latest_tag=${latest_tag#v}" >> $GITHUB_ENV
-          echo "bump_level=patch" >> $GITHUB_ENV
-          if [[ "${{github.ref}}" == *"feature"* ]]; then
-            echo "bump_level=minor" >> $GITHUB_ENV
-          fi
-          if [[ "${{github.ref}}" == *"bugfix"* ]]; then
-            echo "bump_level=patch" >> $GITHUB_ENV
-          fi
-          if [[ "${{github.ref}}" == *"breaking"* ]]; then
-            echo "bump_level=major" >> $GITHUB_ENV
-          fi
-
-      - name: Bump Version
-        id: bump
-        uses: cbrgm/semver-bump-action@main
-        with:
-          current-version: ${{ env.latest_tag }}
-          bump-level: ${{ env.bump_level }}
 
       - name: Get Latest Worker Tag
         id: worker-tag
@@ -83,23 +67,9 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          tags: ${{ steps.login-ecr-public.outputs.registry }}/l2b0q2h2/dragonops-orchestrator:${{ github.sha }},${{ steps.login-ecr-public.outputs.registry }}/l2b0q2h2/dragonops-orchestrator:latest,${{ steps.login-ecr-public.outputs.registry }}/l2b0q2h2/dragonops-orchestrator:v${{ steps.bump.outputs.new_version }}
+          tags: ${{ steps.login-ecr-public.outputs.registry }}/l2b0q2h2/dragonops-orchestrator:${{ github.sha }},${{ steps.login-ecr-public.outputs.registry }}/l2b0q2h2/dragonops-orchestrator:latest,${{ steps.login-ecr-public.outputs.registry }}/l2b0q2h2/dragonops-orchestrator:v${{ env.latest_tag }}
           file: Dockerfile
           ssh: default
           push: true
           provenance: false
           build-args: WORKER_VERSION=${{ env.worker_tag }}
-
-      - name: Push Tag
-        run: |
-          new_tag=v${{ steps.bump.outputs.new_version }}
-          if [[ $(git rev-list ${{ env.latest_tag }}..HEAD --count) -gt 0 ]]; then
-            echo "Hello"
-            echo $(git remote -v)
-            git config user.name "GitHub Actions"
-            git config user.email "github-actions@users.noreply.github.com"
-            git tag $new_tag
-            git push origin $new_tag
-          else
-            echo "No new commits since last tag. Skipping tag push."
-          fi

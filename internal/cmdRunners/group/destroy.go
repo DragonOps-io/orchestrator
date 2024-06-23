@@ -40,18 +40,22 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	group := types.Group{}
 	o := mm.Find(&group, payload.GroupID)
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", payload.GroupID).Msg("Error finding group")
 		return fmt.Errorf("Error when trying to retrieve group with id %s: %s", payload.GroupID, o.Err)
 	}
 	log.Debug().Str("GroupID", group.ID).Msg("Found group")
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
+		log.Err(fmt.Errorf("no RECEIPT_HANDLE variable found")).Str("GroupID", group.ID).Msg("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
 		aco := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return o.Err
 		}
 		aco = mm.Update(&group, "FailedReason", "No RECEIPT_HANDLE variable found.")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return aco.Err
 		}
 		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
@@ -60,12 +64,15 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	var accounts []types.Account
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 		aco := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return aco.Err
 		}
 		o = mm.Update(&group, "FailedReason", o.Err.Error())
 		if o.Err != nil {
+			log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return o.Err
 		}
 		return fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", o.Err)
@@ -77,12 +84,15 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		return nil
 	})
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg("Error loading default config")
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", err.Error())
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return aco.Err
 		}
 		return err
@@ -91,12 +101,15 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	// get the doApiKey from secrets manager, not the payload
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", err.Error())
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return aco.Err
 		}
 		return err
@@ -104,20 +117,25 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 		aco := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if aco.Err != nil {
-			return o.Err
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
+			return aco.Err
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
 	}
 
 	if !authResponse.IsValid {
+		log.Err(fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")).Str("GroupID", group.ID).Msg("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 		aco := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if aco.Err != nil {
-			return o.Err
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
+			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", "The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return aco.Err
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
@@ -132,12 +150,15 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		log.Debug().Str("GroupID", group.ID).Msg("Assuming cross account role.")
 		cfg, err = getCrossAccountConfig(ctx, cfg, *roleToAssume, group.Account.AwsAccountId, group.Account.Region)
 		if err != nil {
+			log.Err(err).Str("GroupID", group.ID).Msg("Error assuming cross account role")
 			o = mm.Update(&group, "Status", "DESTROY_FAILED")
 			if o.Err != nil {
+				log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 				return o.Err
 			}
 			o = mm.Update(&group, "FailedReason", err.Error())
 			if o.Err != nil {
+				log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 				return o.Err
 			}
 			return err
@@ -157,12 +178,15 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
+			log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 			o = mm.Update(&group, "Status", "DESTROY_FAILED")
 			if o.Err != nil {
+				log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 				return o.Err
 			}
 			o = mm.Update(&group, "FailedReason", err.Error())
 			if o.Err != nil {
+				log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 				return o.Err
 			}
 			return err
@@ -170,12 +194,15 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 
 		err = formatWithWorkerAndDestroy(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, cfg)
 		if err != nil {
+			log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 			o = mm.Update(&group, "Status", "DESTROY_FAILED")
 			if o.Err != nil {
+				log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 				return o.Err
 			}
 			o = mm.Update(&group, "FailedReason", err.Error())
 			if o.Err != nil {
+				log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 				return o.Err
 			}
 			return err
@@ -191,6 +218,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		log.Debug().Str("GroupID", group.ID).Msg("Deleting hosted zone.")
 		_, err = route53Client.DeleteHostedZone(ctx, &route53.DeleteHostedZoneInput{Id: &group.DragonOpsRoute53.HostedZoneId})
 		if err != nil {
+			log.Err(err).Str("GroupID", group.ID).Msg("Error deleting hosted zone.")
 			if strings.Contains(err.Error(), fmt.Sprintf("The specified hosted zone contains non-required resource record sets and so cannot be deleted")) {
 				// delete all non-SOA and Name server records
 				// TODO need to paginate?
@@ -199,12 +227,15 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 					HostedZoneId: &group.DragonOpsRoute53.HostedZoneId,
 				})
 				if err != nil {
+					log.Err(err).Str("GroupID", group.ID).Msg("Error listing resource record sets.")
 					o = mm.Update(&group, "Status", "DESTROY_FAILED")
 					if o.Err != nil {
+						log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 						return o.Err
 					}
 					o = mm.Update(&group, "FailedReason", err.Error())
 					if o.Err != nil {
+						log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 						return o.Err
 					}
 					return err
@@ -218,14 +249,20 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 						},
 						HostedZoneId: &group.DragonOpsRoute53.HostedZoneId,
 					})
+					if err != nil {
+						log.Err(err).Str("GroupID", group.ID).Msg("Error deleting resource record set.")
+					}
 				}
 			} else if !strings.Contains(err.Error(), fmt.Sprintf("No hosted zone found with ID: %s", group.DragonOpsRoute53.HostedZoneId)) {
+				log.Err(err).Str("GroupID", group.ID).Msg("Error deleting hosted zone.")
 				o = mm.Update(&group, "Status", "DESTROY_FAILED")
 				if o.Err != nil {
+					log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 					return o.Err
 				}
 				o = mm.Update(&group, "FailedReason", err.Error())
 				if o.Err != nil {
+					log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 					return o.Err
 				}
 				return err
@@ -236,12 +273,15 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		log.Debug().Str("GroupID", group.ID).Msg("Deleting name servers from DragonOps.")
 		err = deleteNameServersFromDragonOps(*doApiKey, authResponse.MasterAccountAccessRoleArn, authResponse.MasterAccountRegion, authResponse.Team, group.DragonOpsRoute53.NameServers, group.DragonOpsRoute53.RootDomain)
 		if err != nil {
+			log.Err(err).Str("GroupID", group.ID).Msg("Error deleting name servers from DragonOps.")
 			o = mm.Update(&group, "Status", "DESTROY_FAILED")
 			if o.Err != nil {
+				log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 				return o.Err
 			}
 			o = mm.Update(&group, "FailedReason", err.Error())
 			if o.Err != nil {
+				log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 				return o.Err
 			}
 			return err
@@ -253,12 +293,14 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	var clusters []types.Cluster
 	o = mm.Where(&clusters, "Group.ID", group.ID)
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 		return o.Err
 	}
 	for _, cluster := range clusters {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Deleting cluster %s record from DynamoDb.", cluster.Name))
 		o = mm.SoftDelete(&cluster)
 		if o.Err != nil {
+			log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 			return o.Err
 		}
 	}
@@ -266,12 +308,14 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	var networks []types.Network
 	o = mm.Where(&networks, "Group.ID", group.ID)
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 		return o.Err
 	}
 	for _, network := range networks {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Deleting network %s record from DynamoDb.", network.Name))
 		o = mm.SoftDelete(&network)
 		if o.Err != nil {
+			log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 			return o.Err
 		}
 	}
@@ -279,12 +323,14 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	var environments []types.Environment
 	o = mm.Where(&environments, "Group.ID", group.ID)
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 		return o.Err
 	}
 	for _, env := range environments {
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Deleting environment %s record from DynamoDb.", env.Name))
 		o = mm.SoftDelete(&env)
 		if o.Err != nil {
+			log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 			return o.Err
 		}
 	}
@@ -302,20 +348,28 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		ReceiptHandle: &receiptHandle,
 	})
 	if err != nil {
+		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 		aco := mm.Update(&group, "Status", "DESTROY_FAILED")
 		if aco.Err != nil {
-			return o.Err
+			log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
+			return aco.Err
 		}
 		o = mm.Update(&group, "FailedReason", err.Error())
 		if o.Err != nil {
+			log.Err(o.Err).Str("GroupID", group.ID).Msg("Error updating group status")
 			return o.Err
 		}
 		return err
 	}
-
+	aco := mm.Update(&group, "Status", "DESTROYED")
+	if aco.Err != nil {
+		log.Err(aco.Err).Str("GroupID", group.ID).Msg("Error updating group status")
+		return aco.Err
+	}
 	log.Debug().Str("GroupID", group.ID).Msg("Group destroyed. Deleting record from DynamoDb.")
 	o = mm.SoftDelete(&group)
 	if o.Err != nil {
+		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
 		return o.Err
 	}
 	return nil
@@ -410,7 +464,18 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 		}
 		return fmt.Errorf("Error running `worker group apply` for group with id %s: %s: %s", group.ID, err, *msg)
 	}
-
+	err = destroy(ctx, mm, group, execPath, roleToAssume, "environment-static", cfg)
+	if err != nil {
+		o := mm.Update(&group, "Status", "DESTROY_FAILED")
+		if o.Err != nil {
+			return o.Err
+		}
+		o = mm.Update(&group, "FailedReason", err.Error())
+		if o.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("Error running destroy for environment-static stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	}
 	log.Debug().Str("GroupID", group.ID).Msg("Destroying group Terraform")
 	// can't use a for loop because we need to do it in order
 	// destroy environments all together
@@ -426,7 +491,18 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 		}
 		return fmt.Errorf("Error running destroy for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
 	}
-
+	err = destroy(ctx, mm, group, execPath, roleToAssume, "rds", cfg)
+	if err != nil {
+		o := mm.Update(&group, "Status", "DESTROY_FAILED")
+		if o.Err != nil {
+			return o.Err
+		}
+		o = mm.Update(&group, "FailedReason", err.Error())
+		if o.Err != nil {
+			return o.Err
+		}
+		return fmt.Errorf("Error running destroy for rds stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	}
 	// destroy cluster grafana all together
 	err = destroy(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg)
 	if err != nil {

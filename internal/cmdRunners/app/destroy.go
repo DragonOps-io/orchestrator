@@ -23,6 +23,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	app := types.App{}
 	o := mm.Find(&app, payload.AppID)
 	if o.Err != nil {
+		log.Err(o.Err).Str("AppID", payload.AppID).Msg("Error finding app")
 		return fmt.Errorf("an error occurred when trying to find the item with id %s: %s", payload.AppID, o.Err)
 	}
 	log.Debug().Str("AppID", app.ID).Msg("Found app")
@@ -32,6 +33,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		env := types.Environment{}
 		o = mm.Find(&env, envId)
 		if o.Err != nil {
+			log.Err(o.Err).Str("AppID", payload.AppID).Msg(o.Err.Error())
 			return o.Err
 		}
 		appEnvironmentsToDestroy = append(appEnvironmentsToDestroy, env)
@@ -42,6 +44,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	if receiptHandle == "" {
 		ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
 		if ue != nil {
+			log.Err(ue).Str("AppID", payload.AppID).Msg(ue.Error())
 			return ue
 		}
 		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
@@ -50,8 +53,10 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	var accounts []types.Account
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
+		log.Err(o.Err).Str("AppID", payload.AppID).Msg(o.Err.Error())
 		o = mm.Update(&app, "Status", "DELETE_FAILED")
 		if o.Err != nil {
+			log.Err(o.Err).Str("AppID", payload.AppID).Msg(o.Err.Error())
 			return o.Err
 		}
 		return fmt.Errorf("an error occurred when trying to find the Master Account: %s", o.Err)
@@ -65,21 +70,26 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		return nil
 	})
 	if err != nil {
+		log.Err(err).Str("AppID", payload.AppID).Msg(err.Error())
 		return err
 	}
 
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
+		log.Err(err).Str("AppID", payload.AppID).Msg(err.Error())
 		o = mm.Update(&app, "Status", "DELETE_FAILED")
 		if o.Err != nil {
+			log.Err(o.Err).Str("AppID", payload.AppID).Msg(o.Err.Error())
 			return o.Err
 		}
 		return fmt.Errorf("an error occurred when trying to find the Do Api Key: %s", o.Err)
 	}
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
+		log.Err(err).Str("AppID", payload.AppID).Msg(err.Error())
 		aco := mm.Update(&app, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
+			log.Err(aco.Err).Str("AppID", payload.AppID).Msg(aco.Err.Error())
 			return o.Err
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
@@ -87,7 +97,8 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	if !authResponse.IsValid {
 		aco := mm.Update(&app, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
-			return o.Err
+			log.Err(aco.Err).Str("AppID", payload.AppID).Msg(aco.Err.Error())
+			return aco.Err
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 	}
@@ -105,8 +116,10 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
+			log.Err(err).Str("AppID", payload.AppID).Msg(err.Error())
 			ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
 			if ue != nil {
+				log.Err(ue).Str("AppID", payload.AppID).Msg(ue.Error())
 				return ue
 			}
 			return err
@@ -116,8 +129,10 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 
 		err = formatWithWorkerAndDestroy(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToDestroy, execPath)
 		if err != nil {
+			log.Err(err).Str("AppID", payload.AppID).Msg(err.Error())
 			ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
 			if ue != nil {
+				log.Err(ue).Str("AppID", payload.AppID).Msg(ue.Error())
 				return ue
 			}
 			return err
@@ -132,6 +147,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 			}
 			o = mm.Save(&app)
 			if o.Err != nil {
+				log.Err(o.Err).Str("AppID", payload.AppID).Msg(o.Err.Error())
 				return o.Err
 			}
 			log.Debug().Str("AppID", app.ID).Msg("App environment status updated")
@@ -148,6 +164,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		ReceiptHandle: &receiptHandle,
 	})
 	if err != nil {
+		log.Err(err).Str("AppID", payload.AppID).Msg(err.Error())
 		return err
 	}
 
@@ -160,7 +177,6 @@ func updateEnvironmentStatusesToDestroyFailed(app types.App, environmentsToApply
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "DESTROYING" {
 				app.Environments[idx].Status = "DESTROY_FAILED"
 				app.Environments[idx].FailedReason = errMsg
-				//app.Environments[idx] = appEnvConfig
 			}
 		}
 	}

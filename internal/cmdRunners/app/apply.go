@@ -28,6 +28,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	app := types.App{}
 	o := mm.Find(&app, payload.AppID)
 	if o.Err != nil {
+		log.Err(o.Err).Str("AppID", payload.AppID).Msg("Error finding app")
 		return fmt.Errorf("an error occurred when trying to find the app with id %s: %s", payload.AppID, o.Err)
 	}
 	log.Debug().Str("AppID", app.ID).Msg("Found app")
@@ -37,6 +38,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		env := types.Environment{}
 		o = mm.Find(&env, envId)
 		if o.Err != nil {
+			log.Err(o.Err).Str("AppID", app.ID).Str("EnvironmentID", envId).Msg("Error finding environment")
 			return o.Err
 		}
 		appEnvironmentsToApply = append(appEnvironmentsToApply, env)
@@ -45,8 +47,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
+		log.Err(o.Err).Str("AppID", app.ID).Msg("Error finding RECEIPT_HANDLE env var.")
 		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, fmt.Errorf("no RECEIPT_HANDLE variable found"))
 		if ue != nil {
+			log.Err(o.Err).Str("AppID", app.ID).Msg(ue.Error())
 			return ue
 		}
 		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
@@ -55,8 +59,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	var accounts []types.Account
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
+		log.Err(o.Err).Str("AppID", payload.AppID).Msg(o.Err.Error())
 		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, o.Err)
 		if ue != nil {
+			log.Err(o.Err).Str("AppID", app.ID).Msg(ue.Error())
 			return ue
 		}
 		return fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", o.Err)
@@ -68,8 +74,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		return nil
 	})
 	if err != nil {
+		log.Err(o.Err).Str("AppID", payload.AppID).Msg(err.Error())
 		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 		if ue != nil {
+			log.Err(o.Err).Str("AppID", app.ID).Msg(ue.Error())
 			return ue
 		}
 		return err
@@ -78,8 +86,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	// get the doApiKey from secrets manager, not the payload
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
+		log.Err(o.Err).Str("AppID", payload.AppID).Msg(err.Error())
 		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 		if ue != nil {
+			log.Err(o.Err).Str("AppID", app.ID).Msg(ue.Error())
 			return ue
 		}
 		return err
@@ -87,15 +97,19 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
+		log.Err(o.Err).Str("AppID", payload.AppID).Msg(err.Error())
 		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 		if ue != nil {
+			log.Err(o.Err).Str("AppID", app.ID).Msg(ue.Error())
 			return ue
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
 	}
 	if !authResponse.IsValid {
+		log.Err(o.Err).Str("AppID", app.ID).Msg("Invalid do api key provided.")
 		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help"))
 		if ue != nil {
+			log.Err(o.Err).Str("AppID", app.ID).Msg(ue.Error())
 			return ue
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
@@ -117,8 +131,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
+			log.Err(o.Err).Str("AppID", payload.AppID).Msg(err.Error())
 			ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 			if ue != nil {
+				log.Err(o.Err).Str("AppID", app.ID).Msg(ue.Error())
 				return ue
 			}
 			return err
@@ -128,8 +144,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToApply, execPath)
 		if err != nil {
+			log.Err(o.Err).Str("AppID", payload.AppID).Msg(err.Error())
 			ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 			if ue != nil {
+				log.Err(o.Err).Str("AppID", app.ID).Msg(ue.Error())
 				return ue
 			}
 			return err
@@ -137,6 +155,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	} else {
 		err = updateEnvironmentStatusesToApplied(app, appEnvironmentsToApply, mm)
 		if err != nil {
+			log.Err(o.Err).Str("AppID", payload.AppID).Msg(err.Error())
 			return err
 		}
 	}
@@ -151,7 +170,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		ReceiptHandle: &receiptHandle,
 	})
 	if err != nil {
-		log.Err(err).Str("AppID", app.ID).Msg("Error deleting message from queue")
+		log.Err(err).Str("AppID", app.ID).Msg(fmt.Sprintf("Error deleting message from queue: %s", err.Error()))
 		return err
 	}
 	//err = updateEnvironmentStatusesToApplied(app, appEnvironmentsToApply, mm)
