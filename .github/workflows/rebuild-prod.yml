@@ -1,9 +1,6 @@
 name: rebuild-prod
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - prod
 
 permissions:
   contents: write
