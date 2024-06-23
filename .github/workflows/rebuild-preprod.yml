@@ -1,0 +1,90 @@
+name: rebuild-preprod
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: read
+
+jobs:
+  build_and_push:
+    name: Build and Push Prod
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PREPROD_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.PREPROD_SECRET_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR Public
+        id: login-ecr-public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+      # This is needed for the Dockerfile -- we pull in worker.
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Set up SSH
+        uses: MrSquaare/ssh-setup-action@7bfdda6ef6839504e3a5b2625ad971b17461a0db # v3.0.0
+        with:
+          host: github.com
+          private-key: ${{ secrets.PRIVATE_SSH_KEY_TYPES_REPO }}
+          private-key-name: github-ppk
+
+      - name: Get latest tag
+        id: gettag
+        run: |
+          latest_tag=$(git tag --sort=committerdate | tail -1)
+          echo $latest_tag
+          echo "latest_tag=${latest_tag#v}" >> $GITHUB_ENV
+
+      - name: Bump Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ env.latest_tag }}
+          bump-level: ${{ env.bump_level }}
+
+      - name: Push Tag
+        run: |
+          new_tag=v${{ steps.bump.outputs.new_version }}
+          if [[ $(git rev-list v${{ env.latest_tag }}..HEAD --count) -gt 0 ]]; then
+            echo "Hello"
+            echo $(git remote -v)
+            git config user.name "GitHub Actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git tag $new_tag main
+            git push origin $new_tag
+          else
+            echo "No new commits since last tag. Skipping tag push."
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          tags: ${{ steps.login-ecr-public.outputs.registry }}/z0q6p3w2/dragonops-orchestrator:${{ github.sha }},${{ steps.login-ecr-public.outputs.registry }}/z0q6p3w2/dragonops-orchestrator:latest, ${{ steps.login-ecr-public.outputs.registry }}/z0q6p3w2/dragonops-orchestrator:v${{ env.latest_tag }}
+          file: preprod.Dockerfile
+          ssh: default
+          push: true
+          provenance: false
