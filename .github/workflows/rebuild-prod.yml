@@ -1,4 +1,4 @@
-name: build-prod
+name: rebuild-prod
 on:
   workflow_dispatch:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build_and_push:
-    name: Build and Push Prod
+    name: Build and Push Preprod
     runs-on: ubuntu-latest
 
     steps:
