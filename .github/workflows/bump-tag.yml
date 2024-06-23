@@ -1,0 +1,96 @@
+name: Bump version
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+
+permissions:
+  contents: write
+  actions: write
+  packages: write
+
+jobs:
+  BumpTagAndOpenPRs:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
+
+      - name: Get latest tag
+        run: |
+          latest_tag=$(git tag --sort=committerdate | tail -1)
+          echo "latest_tag=${latest_tag#v}" >> $GITHUB_ENV
+          echo "bump_level=patch" >> $GITHUB_ENV
+          if [[ "${{github.ref}}" == *"feature"* ]]; then
+            echo "bump_level=minor" >> $GITHUB_ENV
+          fi
+          if [[ "${{github.ref}}" == *"bugfix"* ]]; then
+            echo "bump_level=patch" >> $GITHUB_ENV
+          fi
+          if [[ "${{github.ref}}" == *"breaking"* ]]; then
+            echo "bump_level=major" >> $GITHUB_ENV
+          fi
+
+      - name: Bump Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ env.latest_tag }}
+          bump-level: ${{ env.bump_level }}
+
+      - name: Push Tag
+        run: |
+          new_tag=v${{ steps.bump.outputs.new_version }}
+          if [[ $(git rev-list v${{ env.latest_tag }}..HEAD --count) -gt 0 ]]; then
+            echo "Hello"
+            echo $(git remote -v)
+            git config user.name "GitHub Actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git tag $new_tag
+            git push origin $new_tag
+          else
+            echo "No new commits since last tag. Skipping tag push."
+          fi
+      # create a branch right now off of main, called the tag, and
+      - name: Create tag branch
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.ORCH_REPO_PATH }} # Fine-grained GitHub PAT that was saved as repository secret
+          script: |
+            await github.rest.git.createRef({
+                owner: 'DragonOps-io',
+                repo: 'orchestrator',
+                ref: 'refs/heads/v${{ steps.bump.outputs.new_version }}',
+                sha: '${{ github.sha }}'
+            })
+
+      - name: Open PR to preprod
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.ORCH_REPO_PATH }} # Fine-grained GitHub PAT that was saved as repository secret
+          script: |
+            await github.rest.pulls.create({
+                owner: 'DragonOps-io',
+                repo: 'orchestrator',
+                title: 'Merge in tag v${{ steps.bump.outputs.new_version }} to preprod',
+                body: 'Do not delete the branch upon merge! The branch needs to be used to deploy to prod next.',
+                head: 'v${{ steps.bump.outputs.new_version }}',
+                base: 'preprod'
+            })
+
+      - name: Open PR to prod
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.ORCH_REPO_PATH }} # Fine-grained GitHub PAT that was saved as repository secret
+          script: |
+            await github.rest.pulls.create({
+                owner: 'DragonOps-io',
+                repo: 'orchestrator',
+                title: 'Merge in tag v${{ steps.bump.outputs.new_version }} to prod',
+                body: 'Please select `delete branch after merge` when merging.',
+                head: 'v${{ steps.bump.outputs.new_version }}',
+                base: 'prod'
+            })
