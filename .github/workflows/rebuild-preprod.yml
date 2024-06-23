@@ -1,9 +1,6 @@
-name: build-preprod
+name: rebuild-preprod
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - preprod
 
 permissions:
   contents: read
@@ -12,7 +9,7 @@ permissions:
 
 jobs:
   build_and_push:
-    name: Build and Push Preprod
+    name: Build and Push Prod
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -60,6 +57,27 @@ jobs:
           latest_tag=$(git tag --sort=committerdate | tail -1)
           echo $latest_tag
           echo "latest_tag=${latest_tag#v}" >> $GITHUB_ENV
+
+      - name: Bump Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ env.latest_tag }}
+          bump-level: ${{ env.bump_level }}
+
+      - name: Push Tag
+        run: |
+          new_tag=v${{ steps.bump.outputs.new_version }}
+          if [[ $(git rev-list v${{ env.latest_tag }}..HEAD --count) -gt 0 ]]; then
+            echo "Hello"
+            echo $(git remote -v)
+            git config user.name "GitHub Actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git tag $new_tag main
+            git push origin $new_tag
+          else
+            echo "No new commits since last tag. Skipping tag push."
+          fi
 
       - name: Build and push
         uses: docker/build-push-action@v5
