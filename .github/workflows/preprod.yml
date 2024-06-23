@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -56,6 +58,7 @@ jobs:
         id: gettag
         run: |
           latest_tag=$(git tag --sort=committerdate | tail -1)
+          echo $latest_tag
           echo "latest_tag=${latest_tag#v}" >> $GITHUB_ENV
 
       - name: Build and push
