@@ -25,7 +25,7 @@ COPY . .
 RUN  --mount=type=ssh \
       CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o .
 
-FROM 124269415015.dkr.ecr.us-east-1.amazonaws.com/dev-worker:latest as worker
+FROM 851725405730.dkr.ecr.us-east-1.amazonaws.com/dev-worker:latest as worker
 
 FROM alpine:3.18.3
 
