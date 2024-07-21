@@ -2,6 +2,7 @@ name: rebuild-prod
 on:
   workflow_dispatch:
 
+
 permissions:
   contents: write
   actions: write
