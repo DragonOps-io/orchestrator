@@ -366,6 +366,14 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
+			// handle output for vpc id
+			if dirName == "network" {
+				err = saveNetworkVpcId(mm, out, group.ID, dir.Name())
+				if err != nil {
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+					return
+				}
+			}
 			// handle output for grafana credentials
 			if dirName == "cluster_grafana" {
 				err = saveCredsToCluster(mm, out, group.ID, dir.Name())
@@ -377,6 +385,14 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 			// handle output for alb dns name for environment
 			if dirName == "environment" {
 				err = saveEnvironmentAlbDnsName(mm, out, group.ID, dir.Name())
+				if err != nil {
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+					return
+				}
+			}
+			// handle output for rds endpoint for environment
+			if dirName == "rds" {
+				err = saveRdsEndpointAndSecret(mm, out, group.ID, dir.Name())
 				if err != nil {
 					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 					return
@@ -466,6 +482,86 @@ func saveEnvironmentAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexe
 				if e.ResourceLabel == envResourceLabel {
 					e.AlbDnsName = alb.DnsName
 					o = mm.Update(&e, "AlbDnsName", alb.DnsName)
+					if o.Err != nil {
+						return o.Err
+					}
+					break
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, rdsResourceLabel string) error {
+	for key, output := range outputs {
+		if key == "rds_endpoint" {
+			var endpoint string
+			if err := json.Unmarshal(output.Value, &endpoint); err != nil {
+				return err
+			}
+			var rds []types.Rds
+			o := mm.Where(&rds, "Group.ID", groupID)
+			if o.Err != nil {
+				return o.Err
+			}
+			for _, e := range rds {
+				if e.ResourceLabel == rdsResourceLabel {
+					e.Endpoint = endpoint
+					o = mm.Update(&e, "Endpoint", endpoint)
+					if o.Err != nil {
+						return o.Err
+					}
+					break
+				}
+			}
+		}
+		if key == "cluster_master_user_secret" {
+			var secretMap map[string]interface{}
+			if err := json.Unmarshal(output.Value, &secretMap); err != nil {
+				return err
+			}
+			var rds []types.Rds
+			o := mm.Where(&rds, "Group.ID", groupID)
+			if o.Err != nil {
+				return o.Err
+			}
+			for _, e := range rds {
+				if e.ResourceLabel == rdsResourceLabel {
+					e.MasterUserSecretArn = secretMap["secret_arn"].(string)
+					o = mm.Update(&e, "MasterUserSecretArn", secretMap["secret_arn"].(string))
+					if o.Err != nil {
+						return o.Err
+					}
+					e.MasterUserSecretStatus = secretMap["secret_status"].(string)
+					o = mm.Update(&e, "MasterUserSecretStatus", secretMap["secret_status"].(string))
+					if o.Err != nil {
+						return o.Err
+					}
+					break
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func saveNetworkVpcId(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, networkResourceLabel string) error {
+	for key, output := range outputs {
+		if key == "vpc" {
+			var vpcMap map[string]interface{}
+			if err := json.Unmarshal(output.Value, &vpcMap); err != nil {
+				return err
+			}
+			var networks []types.Network
+			o := mm.Where(&networks, "Group.ID", groupID)
+			if o.Err != nil {
+				return o.Err
+			}
+			for _, n := range networks {
+				if n.ResourceLabel == networkResourceLabel {
+					n.VpcID = vpcMap["vpc_id"].(string)
+					o = mm.Update(&n, "VpcID", vpcMap["vpc_id"].(string))
 					if o.Err != nil {
 						return o.Err
 					}
