@@ -495,6 +495,8 @@ func saveEnvironmentAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexe
 
 func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, rdsResourceLabel string) error {
 	for key, output := range outputs {
+		fmt.Println(key)
+		fmt.Println(output.Value)
 		if key == "rds_endpoint" {
 			var endpoint string
 			if err := json.Unmarshal(output.Value, &endpoint); err != nil {
