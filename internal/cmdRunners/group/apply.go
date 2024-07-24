@@ -536,7 +536,8 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 			if err != nil {
 				return err
 			}
-
+			var usernameAndPassword map[string]string
+			err = json.Unmarshal([]byte(*out.SecretString), &usernameAndPassword)
 			var rds []types.Rds
 			o := mm.Where(&rds, "Group.ID", groupID)
 			if o.Err != nil {
@@ -550,7 +551,7 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 						return o.Err
 					}
 					e.MasterUserPassword = *out.SecretString
-					o = mm.Update(&e, "MasterUserPassword", *out.SecretString)
+					o = mm.Update(&e, "MasterUserPassword", usernameAndPassword["password"])
 					if o.Err != nil {
 						return o.Err
 					}
