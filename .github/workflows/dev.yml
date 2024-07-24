@@ -30,8 +30,8 @@ jobs:
   build_and_push:
     name: Build And Push Dev Image
     runs-on: ubuntu-latest
-    if: ${{ needs.ShouldRun.outputs.condition == 'true' }}
-    needs: [ShouldRun]
+#    if: ${{ needs.ShouldRun.outputs.condition == 'true' }}
+#    needs: [ShouldRun]
     permissions:
       contents: read
       id-token: write
