@@ -495,8 +495,6 @@ func saveEnvironmentAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexe
 
 func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, rdsResourceLabel string) error {
 	for key, output := range outputs {
-		fmt.Println(key)
-		fmt.Println(output.Value)
 		if key == "rds_endpoint" {
 			var endpoint string
 			if err := json.Unmarshal(output.Value, &endpoint); err != nil {
@@ -519,9 +517,16 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 			}
 		}
 		if key == "cluster_master_user_secret" {
-			var secretMap map[string]interface{}
-			if err := json.Unmarshal(output.Value, &secretMap); err != nil {
+			var secretArray []map[string]interface{}
+			var secretArn string
+			if err := json.Unmarshal(output.Value, &secretArray); err != nil {
 				return err
+			}
+			for _, secret := range secretArray {
+				if secret["secret_status"] == "active" {
+					secretArn = secret["secret_arn"].(string)
+					break
+				}
 			}
 			var rds []types.Rds
 			o := mm.Where(&rds, "Group.ID", groupID)
@@ -530,16 +535,16 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 			}
 			for _, e := range rds {
 				if e.ResourceLabel == rdsResourceLabel {
-					e.MasterUserSecretArn = secretMap["secret_arn"].(string)
-					o = mm.Update(&e, "MasterUserSecretArn", secretMap["secret_arn"].(string))
+					e.MasterUserSecretArn = secretArn
+					o = mm.Update(&e, "MasterUserSecretArn", secretArn)
 					if o.Err != nil {
 						return o.Err
 					}
-					e.MasterUserSecretStatus = secretMap["secret_status"].(string)
-					o = mm.Update(&e, "MasterUserSecretStatus", secretMap["secret_status"].(string))
-					if o.Err != nil {
-						return o.Err
-					}
+					//e.MasterUserSecretStatus = secretMap["secret_status"].(string)
+					//o = mm.Update(&e, "MasterUserSecretStatus", secretMap["secret_status"].(string))
+					//if o.Err != nil {
+					//	return o.Err
+					//}
 					break
 				}
 			}
