@@ -278,6 +278,23 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 						fmt.Printf("Error decoding output value for key %s: %s\n", "cloudfront_distribution_id", err)
 					}
 					app.Environments[idx].CloudfrontDistroID = string(cfDistroID)
+				} else {
+					// handle the dashbaord outputs
+					var redUrl string
+					if err = json.Unmarshal(out["app_red_dashboard_url"].Value, &redUrl); err != nil {
+						fmt.Printf("Error decoding output value for key %s: %s\n", "app_red_dashboard_url", err)
+					}
+
+					var useUrl string
+					if err = json.Unmarshal(out["app_use_dashboard_url"].Value, &useUrl); err != nil {
+						fmt.Printf("Error decoding output value for key %s: %s\n", "app_use_dashboard_url", err)
+					}
+					// need to get the unique id for loki datasource from cluster
+					app.Environments[idx].ObservabilityUrls = &types.ObservabilityUrls{
+						Logs:       "",
+						REDMetrics: redUrl,
+						UseMetrics: useUrl,
+					}
 				}
 				break
 			}
