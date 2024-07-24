@@ -9,23 +9,23 @@ on:
       - "preprod"
 
 jobs:
-  ShouldRun:
-    runs-on: ubuntu-latest
-    outputs:
-      condition: ${{ steps.condition.outputs.condition }}
-    steps:
-      - id: condition
-        run: |
-          echo ${{ github.ref_name }}
-          echo ${{ github.head_ref }}
-          PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+$'
-          if [[ "${{ github.ref_name }}" = *"main"* ]] || [[ "${{ github.head_ref }}" = *"main"* ]] || [[ "${{ github.ref_name }}" =~ $PATTERN ]] || [[ "${{ github.head_ref }}" =~ $PATTERN ]]; then
-             echo "condition=false" >> $GITHUB_OUTPUT
-             echo false
-          else
-             echo "condition=true" >> $GITHUB_OUTPUT  
-             echo true
-          fi
+#  ShouldRun:
+#    runs-on: ubuntu-latest
+#    outputs:
+#      condition: ${{ steps.condition.outputs.condition }}
+#    steps:
+#      - id: condition
+#        run: |
+#          echo ${{ github.ref_name }}
+#          echo ${{ github.head_ref }}
+#          PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+$'
+#          if [[ "${{ github.ref_name }}" = *"main"* ]] || [[ "${{ github.head_ref }}" = *"main"* ]] || [[ "${{ github.ref_name }}" =~ $PATTERN ]] || [[ "${{ github.head_ref }}" =~ $PATTERN ]]; then
+#             echo "condition=false" >> $GITHUB_OUTPUT
+#             echo false
+#          else
+#             echo "condition=true" >> $GITHUB_OUTPUT
+#             echo true
+#          fi
 
   build_and_push:
     name: Build And Push Dev Image
