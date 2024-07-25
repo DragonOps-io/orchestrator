@@ -289,9 +289,14 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 					if err = json.Unmarshal(out["app_use_dashboard_url"].Value, &useUrl); err != nil {
 						fmt.Printf("Error decoding output value for key %s: %s\n", "app_use_dashboard_url", err)
 					}
+
+					var logsUrl string
+					if err = json.Unmarshal(out["app_loki_url"].Value, &logsUrl); err != nil {
+						fmt.Printf("Error decoding output value for key %s: %s\n", "app_loki_url", err)
+					}
 					// need to get the unique id for loki datasource from cluster
 					app.Environments[idx].ObservabilityUrls = &types.ObservabilityUrls{
-						Logs:       "",
+						Logs:       logsUrl,
 						REDMetrics: redUrl,
 						UseMetrics: useUrl,
 					}
