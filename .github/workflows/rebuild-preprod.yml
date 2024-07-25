@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   build_and_push:
-    name: Build and Push Prod
+    name: Build and Push Preprod
     runs-on: ubuntu-latest
     permissions:
       contents: read

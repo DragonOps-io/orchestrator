@@ -10,6 +10,7 @@ import (
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
@@ -186,7 +187,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
-		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume)
+		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, cfg)
 		if err != nil {
 			log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 			o = mm.Update(&group, "Status", "APPLY_FAILED")
@@ -232,7 +233,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string) error {
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config) error {
 	log.Debug().Str("GroupID", group.ID).Msg("Templating Terraform with correct values")
 
 	command := fmt.Sprintf("/app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
@@ -257,7 +258,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	log.Debug().Str("GroupID", group.ID).Msg("Applying group Terraform")
 	// can't use a for loop because we need to do it in order
 	// apply networks all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "network")
+	err = apply(ctx, mm, group, execPath, roleToAssume, "network", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -271,7 +272,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply clusters all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster")
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -285,7 +286,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply cluster grafana all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana")
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -299,7 +300,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment")
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -313,7 +314,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply static environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static")
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -327,7 +328,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "rds")
+	err = apply(ctx, mm, group, execPath, roleToAssume, "rds", cfg)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -342,7 +343,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	return nil
 }
 
-func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string) error {
+func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config) error {
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying all %ss", dirName))
@@ -366,6 +367,14 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
+			// handle output for vpc id
+			if dirName == "network" {
+				err = saveNetworkVpcId(mm, out, group.ID, dir.Name())
+				if err != nil {
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+					return
+				}
+			}
 			// handle output for grafana credentials
 			if dirName == "cluster_grafana" {
 				err = saveCredsToCluster(mm, out, group.ID, dir.Name())
@@ -377,6 +386,15 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 			// handle output for alb dns name for environment
 			if dirName == "environment" {
 				err = saveEnvironmentAlbDnsName(mm, out, group.ID, dir.Name())
+				if err != nil {
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+					return
+				}
+			}
+			// handle output for rds endpoint for environment
+			if dirName == "rds" {
+				// TODO assume role and create secrets manager client temporarily
+				err = saveRdsEndpointAndSecret(mm, out, group.ID, dir.Name(), cfg)
 				if err != nil {
 					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 					return
@@ -466,6 +484,101 @@ func saveEnvironmentAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexe
 				if e.ResourceLabel == envResourceLabel {
 					e.AlbDnsName = alb.DnsName
 					o = mm.Update(&e, "AlbDnsName", alb.DnsName)
+					if o.Err != nil {
+						return o.Err
+					}
+					break
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, rdsResourceLabel string, cfg aws.Config) error {
+	for key, output := range outputs {
+		if key == "rds_endpoint" {
+			var endpoint string
+			if err := json.Unmarshal(output.Value, &endpoint); err != nil {
+				return err
+			}
+			var rds []types.Rds
+			o := mm.Where(&rds, "Group.ID", groupID)
+			if o.Err != nil {
+				return o.Err
+			}
+			for _, e := range rds {
+				if e.ResourceLabel == rdsResourceLabel {
+					e.Endpoint = endpoint
+					o = mm.Update(&e, "Endpoint", endpoint)
+					if o.Err != nil {
+						return o.Err
+					}
+					break
+				}
+			}
+		}
+		if key == "cluster_master_user_secret" {
+			var secretArray []map[string]interface{}
+			var secretArn string
+			if err := json.Unmarshal(output.Value, &secretArray); err != nil {
+				return err
+			}
+			for _, secret := range secretArray {
+				if secret["secret_status"] == "active" {
+					secretArn = secret["secret_arn"].(string)
+					break
+				}
+			}
+			// need to get the secret value
+			smclient := secretsmanager.NewFromConfig(cfg)
+			out, err := smclient.GetSecretValue(context.Background(), &secretsmanager.GetSecretValueInput{SecretId: &secretArn})
+			if err != nil {
+				return err
+			}
+			var usernameAndPassword map[string]string
+			err = json.Unmarshal([]byte(*out.SecretString), &usernameAndPassword)
+			var rds []types.Rds
+			o := mm.Where(&rds, "Group.ID", groupID)
+			if o.Err != nil {
+				return o.Err
+			}
+			for _, e := range rds {
+				if e.ResourceLabel == rdsResourceLabel {
+					e.MasterUserSecretArn = secretArn
+					o = mm.Update(&e, "MasterUserSecretArn", secretArn)
+					if o.Err != nil {
+						return o.Err
+					}
+					e.MasterUserPassword = *out.SecretString
+					o = mm.Update(&e, "MasterUserPassword", usernameAndPassword["password"])
+					if o.Err != nil {
+						return o.Err
+					}
+					break
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func saveNetworkVpcId(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, networkResourceLabel string) error {
+	for key, output := range outputs {
+		if key == "vpc" {
+			var vpcMap map[string]interface{}
+			if err := json.Unmarshal(output.Value, &vpcMap); err != nil {
+				return err
+			}
+			var networks []types.Network
+			o := mm.Where(&networks, "Group.ID", groupID)
+			if o.Err != nil {
+				return o.Err
+			}
+			for _, n := range networks {
+				if n.ResourceLabel == networkResourceLabel {
+					n.VpcID = vpcMap["vpc_id"].(string)
+					o = mm.Update(&n, "VpcID", vpcMap["vpc_id"].(string))
 					if o.Err != nil {
 						return o.Err
 					}
