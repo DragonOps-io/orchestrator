@@ -691,7 +691,7 @@ func generateWireGuardPublicKey(privateKey string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
+	fmt.Println("public key:  ", string(publicKey))
 	return string(publicKey), nil
 }
 
