@@ -627,7 +627,8 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 		if err != nil {
 			return err
 		}
-		network.WireguardPublicKey = publicKey
+		network.WireguardPublicKey = strings.TrimSpace(publicKey)
+		network.WireguardPrivateKey = strings.TrimSpace(privateKey)
 
 		o := mm.Save(&network)
 		if o.Err != nil {
@@ -659,7 +660,7 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 		}
 	}
 
-	configFile := types.CreateServerConfigFile(network.WireguardIP, network.WireguardPort, clientIPPublicKeyMap)
+	configFile := types.CreateServerConfigFile(network.WireguardIP, network.WireguardPort, network.WireguardPrivateKey, clientIPPublicKeyMap)
 
 	err := types.UpdateServerConfigFileParameter(context.Background(), configFile, network.ID, awsCfg)
 	if err != nil {
@@ -670,8 +671,6 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 	if err != nil {
 		return err
 	}
-	fmt.Println("Command ID: ", *commandId)
-	fmt.Println("Wireguard instance id: ", network.WireguardInstanceID)
 	time.Sleep(3 * time.Second) // Have to sleep because there is a delay in the invocation
 	err = types.WaitForCommandSuccess(context.Background(), client, *commandId, network.WireguardInstanceID)
 	if err != nil {
@@ -699,7 +698,6 @@ func generateWireGuardPublicKey(privateKey string) (string, error) {
 		fmt.Println("error when generating public key:  ", string(publicKey))
 		return "", err
 	}
-	fmt.Println("public key:  ", string(publicKey))
 	return string(publicKey), nil
 }
 
