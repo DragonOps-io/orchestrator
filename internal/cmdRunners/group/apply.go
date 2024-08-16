@@ -602,7 +602,7 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 		return nil, fmt.Errorf("network with resource label %s not found or too many returned", networkResourceLabel)
 	}
 	network := networks[0]
-	network.VpcID = vpcMap["id"].(string)
+	network.VpcID = vpcMap["vpc_id"].(string)
 	network.WireguardInstanceID = wireguardInstanceID
 	network.WireguardPublicIP = wireguardPublicIP
 
