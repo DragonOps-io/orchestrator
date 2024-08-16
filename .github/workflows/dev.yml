@@ -40,6 +40,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.22
+          cache: true
+
+      - name: Download Go Modules
+        run: go mod download
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
