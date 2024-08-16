@@ -589,7 +589,7 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	}
 
 	var vpcMap map[string]interface{}
-	if err := json.Unmarshal(outputs["vpc"].Value, &wireguardPublicIP); err != nil {
+	if err := json.Unmarshal(outputs["vpc"].Value, &vpcMap); err != nil {
 		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "vpc", err)
 	}
 
