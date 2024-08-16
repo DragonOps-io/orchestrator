@@ -678,6 +678,7 @@ func generateWireGuardKey() (string, error) {
 	cmd := exec.Command("wg", "genkey")
 	key, err := cmd.Output()
 	if err != nil {
+		fmt.Println("error when generating private key:  ", string(key))
 		return "", err
 	}
 
@@ -689,6 +690,7 @@ func generateWireGuardPublicKey(privateKey string) (string, error) {
 	cmd.Stdin = strings.NewReader(privateKey)
 	publicKey, err := cmd.Output()
 	if err != nil {
+		fmt.Println("error when generating public key:  ", string(publicKey))
 		return "", err
 	}
 	fmt.Println("public key:  ", string(publicKey))
