@@ -71,7 +71,9 @@ jobs:
           private-key-name: github-ppk
 
       - name: Download Go Modules
-        run: go mod download
+        run: |
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/github-ppk"
+          go mod download
 
       - name: Build and push
         uses: docker/build-push-action@v5
