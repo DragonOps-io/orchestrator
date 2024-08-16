@@ -7,7 +7,7 @@ on:
       - "main"
       - "prod"
       - "preprod"
-
+# TODO Caching changes are only helpful with self hosted runners
 jobs:
 #  ShouldRun:
 #    runs-on: ubuntu-latest
