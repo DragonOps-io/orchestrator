@@ -629,7 +629,7 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 		network.WireguardPublicKey = publicKey
 
 		// create parameters in ssm
-		err = types.UpdatePublicPrivateKeyParameters(context.Background(), &privateKey, &publicKey, network.ID, awsCfg)
+		err = types.UpdatePublicPrivateKeyParameters(context.Background(), &publicKey, &privateKey, network.ID, awsCfg)
 		if err != nil {
 			return err
 		}
