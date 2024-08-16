@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 )
 
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
@@ -658,8 +659,10 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 	if err != nil {
 		return err
 	}
-
-	err = types.CheckCommandStatus(context.Background(), client, *commandId, network.WireguardInstanceID)
+	fmt.Println("Command ID: ", *commandId)
+	fmt.Println("Wireguard instance id: ", network.WireguardInstanceID)
+	time.Sleep(3 * time.Second) // Have to sleep because there is a delay in the invocation
+	err = types.WaitForCommandSuccess(context.Background(), client, *commandId, network.WireguardInstanceID)
 	if err != nil {
 		return err
 	}
