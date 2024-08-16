@@ -2,8 +2,6 @@ package group
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
@@ -17,8 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/crypto/curve25519"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -620,11 +618,18 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 	runInitCommands := false
 	if network.WireguardPublicKey == "" {
 		runInitCommands = true
-		privateKey, publicKey := generateWireguardKeys()
+		privateKey, err := generateWireGuardKey()
+		if err != nil {
+			return err
+		}
+		publicKey, err := generateWireGuardPublicKey(privateKey)
+		if err != nil {
+			return err
+		}
 		network.WireguardPublicKey = publicKey
 
 		// create parameters in ssm
-		err := types.UpdatePublicPrivateKeyParameters(context.Background(), &privateKey, &publicKey, network.ID, awsCfg)
+		err = types.UpdatePublicPrivateKeyParameters(context.Background(), &privateKey, &publicKey, network.ID, awsCfg)
 		if err != nil {
 			return err
 		}
@@ -669,21 +674,25 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 	return nil
 }
 
-func generateWireguardKeys() (string, string) {
-	// Generate a private key
-	var privateKey [32]byte
-	if _, err := rand.Read(privateKey[:]); err != nil {
-		panic(err)
+func generateWireGuardKey() (string, error) {
+	cmd := exec.Command("wg", "genkey")
+	key, err := cmd.Output()
+	if err != nil {
+		return "", err
 	}
 
-	// Generate the corresponding public key
-	var publicKey [32]byte
-	curve25519.ScalarBaseMult(&publicKey, &privateKey)
+	return string(key), nil
+}
 
-	// Encode the keys to base64 for WireGuard format
-	privateKeyBase64 := base64.StdEncoding.EncodeToString(privateKey[:])
-	publicKeyBase64 := base64.StdEncoding.EncodeToString(publicKey[:])
-	return privateKeyBase64, publicKeyBase64
+func generateWireGuardPublicKey(privateKey string) (string, error) {
+	cmd := exec.Command("wg", "pubkey")
+	cmd.Stdin = strings.NewReader(privateKey)
+	publicKey, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	return string(publicKey), nil
 }
 
 type AlbMap struct {
