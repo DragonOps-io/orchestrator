@@ -609,6 +609,7 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	if o.Err != nil {
 		return nil, o.Err
 	}
+
 	return &network, nil
 }
 
@@ -627,6 +628,11 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 			return err
 		}
 		network.WireguardPublicKey = publicKey
+
+		o := mm.Save(&network)
+		if o.Err != nil {
+			return o.Err
+		}
 
 		// create parameters in ssm
 		err = types.UpdatePublicPrivateKeyParameters(context.Background(), &publicKey, &privateKey, network.ID, awsCfg)
