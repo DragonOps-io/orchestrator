@@ -22,8 +22,12 @@ EOT
 
 COPY . .
 
-RUN  --mount=type=ssh \
-      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o .
+# Leverage the GitHub Actions cache for Go modules
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=ssh \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o .
+
 
 FROM 851725405730.dkr.ecr.us-east-1.amazonaws.com/dev-worker:latest as worker
 
