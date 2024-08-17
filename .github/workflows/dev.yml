@@ -7,7 +7,7 @@ on:
       - "main"
       - "prod"
       - "preprod"
-
+# TODO Caching changes are only helpful with self hosted runners
 jobs:
 #  ShouldRun:
 #    runs-on: ubuntu-latest
@@ -40,6 +40,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.22
+          cache: true
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -63,6 +69,12 @@ jobs:
           host: github.com
           private-key: ${{ secrets.PRIVATE_SSH_KEY_TYPES_REPO }}
           private-key-name: github-ppk
+
+      - name: Download Go Modules
+        run: |
+          go env -w GOPRIVATE=github.com/DragonOps-io/*
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          go mod download
 
       - name: Build and push
         uses: docker/build-push-action@v5

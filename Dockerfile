@@ -32,7 +32,7 @@ FROM 989911971741.dkr.ecr.us-east-1.amazonaws.com/dragonops-worker:${WORKER_VERS
 
 FROM alpine:3.18.3
 
-RUN apk add --no-cache bash git age aws-cli
+RUN apk add --no-cache bash git age aws-cli wireguard-tools
 
 WORKDIR /app
 

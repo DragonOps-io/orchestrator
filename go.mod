@@ -3,7 +3,7 @@ module github.com/DragonOps-io/orchestrator
 go 1.22.2
 
 require (
-	github.com/DragonOps-io/types v0.0.0-20240815185422-a4572598efb6
+	github.com/DragonOps-io/types v0.0.0-20240817180836-b85ce6ebf2ba
 	github.com/Ilios-LLC/magicmodel-go v0.0.0-20240607010643-b92047a2c75a
 	github.com/aws/aws-sdk-go-v2 v1.30.3
 	github.com/aws/aws-sdk-go-v2/config v1.26.3
@@ -21,7 +21,6 @@ require (
 	github.com/hashicorp/terraform-exec v0.19.0
 	github.com/rs/zerolog v1.30.0
 	github.com/spf13/cobra v1.8.0
-	golang.org/x/crypto v0.23.0
 )
 
 require (
@@ -58,6 +57,7 @@ require (
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/zclconf/go-cty v1.14.0 // indirect
+	golang.org/x/crypto v0.23.0 // indirect
 	golang.org/x/mod v0.13.0 // indirect
 	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
