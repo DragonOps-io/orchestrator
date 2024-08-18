@@ -3,7 +3,7 @@ module github.com/DragonOps-io/orchestrator
 go 1.22.2
 
 require (
-	github.com/DragonOps-io/types v0.0.0-20240817180836-b85ce6ebf2ba
+	github.com/DragonOps-io/types v0.0.0-20240818200523-5045598f817e
 	github.com/Ilios-LLC/magicmodel-go v0.0.0-20240607010643-b92047a2c75a
 	github.com/aws/aws-sdk-go-v2 v1.30.3
 	github.com/aws/aws-sdk-go-v2/config v1.26.3
