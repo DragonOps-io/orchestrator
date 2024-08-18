@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	r53Types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/rs/zerolog/log"
 	"io"
@@ -312,6 +313,18 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		return o.Err
 	}
 	for _, network := range networks {
+		client := ssm.NewFromConfig(cfg)
+		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Deleting network parameters for network %s.", network.Name))
+		_, err = client.DeleteParameters(ctx, &ssm.DeleteParametersInput{
+			Names: []string{
+				fmt.Sprintf("/%s/wireguard/public_key", network.ID),
+				fmt.Sprintf("/%s/wireguard/private_key", network.ID),
+				fmt.Sprintf("/%s/wireguard/config_file", network.ID),
+			},
+		})
+		if err != nil {
+			return err
+		}
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Deleting network %s record from DynamoDb.", network.Name))
 		o = mm.SoftDelete(&network)
 		if o.Err != nil {

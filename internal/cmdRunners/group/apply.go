@@ -12,12 +12,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"time"
 )
 
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
@@ -367,14 +371,24 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
-			// handle output for vpc id
+
+			// handle network outputs
 			if dirName == "network" {
-				err = saveNetworkVpcId(mm, out, group.ID, dir.Name())
+				var network *types.Network
+				network, err = saveNetworkOutputs(mm, out, group.ID, dir.Name())
 				if err != nil {
-					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+					errors <- fmt.Errorf("error saving outputs for %s %s: %v", dirName, dir.Name(), err)
 					return
 				}
+
+				err = handleWireguardUpdates(mm, *network, cfg)
+				if err != nil {
+					errors <- fmt.Errorf("error updating wireguard for %s %s: %v", dirName, dir.Name(), err)
+					return
+				}
+
 			}
+
 			// handle output for grafana credentials
 			if dirName == "cluster_grafana" {
 				err = saveCredsToCluster(mm, out, group.ID, dir.Name())
@@ -393,7 +407,6 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 			}
 			// handle output for rds endpoint for environment
 			if dirName == "rds" {
-				// TODO assume role and create secrets manager client temporarily
 				err = saveRdsEndpointAndSecret(mm, out, group.ID, dir.Name(), cfg)
 				if err != nil {
 					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
@@ -563,31 +576,129 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 	return nil
 }
 
-func saveNetworkVpcId(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, networkResourceLabel string) error {
-	for key, output := range outputs {
-		if key == "vpc" {
-			var vpcMap map[string]interface{}
-			if err := json.Unmarshal(output.Value, &vpcMap); err != nil {
-				return err
-			}
-			var networks []types.Network
-			o := mm.Where(&networks, "Group.ID", groupID)
-			if o.Err != nil {
-				return o.Err
-			}
-			for _, n := range networks {
-				if n.ResourceLabel == networkResourceLabel {
-					n.VpcID = vpcMap["vpc_id"].(string)
-					o = mm.Update(&n, "VpcID", vpcMap["vpc_id"].(string))
-					if o.Err != nil {
-						return o.Err
-					}
-					break
-				}
-			}
+func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, networkResourceLabel string) (*types.Network, error) {
+	var wireguardInstanceID string
+	if err := json.Unmarshal(outputs["wireguard_instance_id"].Value, &wireguardInstanceID); err != nil {
+		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_instance_id", err)
+	}
+
+	var wireguardPublicIP string
+	if err := json.Unmarshal(outputs["wireguard_public_ip"].Value, &wireguardPublicIP); err != nil {
+		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_public_ip", err)
+	}
+
+	var vpcMap map[string]interface{}
+	if err := json.Unmarshal(outputs["vpc"].Value, &vpcMap); err != nil {
+		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "vpc", err)
+	}
+
+	var networks []types.Network
+	o := mm.WhereV2(true, &networks, "Group.ID", groupID).WhereV2(false, &networks, "ResourceLabel", networkResourceLabel)
+	if o.Err != nil {
+		return nil, o.Err
+	}
+	if len(networks) != 1 {
+		return nil, fmt.Errorf("network with resource label %s not found or too many returned", networkResourceLabel)
+	}
+	network := networks[0]
+	network.VpcID = vpcMap["vpc_id"].(string)
+	network.WireguardInstanceID = wireguardInstanceID
+	network.WireguardPublicIP = wireguardPublicIP
+
+	o = mm.Save(&network)
+	if o.Err != nil {
+		return nil, o.Err
+	}
+
+	return &network, nil
+}
+
+func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsCfg aws.Config) error {
+	// create ssm client
+	client := ssm.NewFromConfig(awsCfg)
+	runInitCommands := false
+	if network.WireguardPublicKey == "" {
+		runInitCommands = true
+		privateKey, err := generateWireGuardKey()
+		if err != nil {
+			return err
+		}
+		publicKey, err := generateWireGuardPublicKey(privateKey)
+		if err != nil {
+			return err
+		}
+		network.WireguardPublicKey = strings.TrimSpace(publicKey)
+		network.WireguardPrivateKey = strings.TrimSpace(privateKey)
+
+		o := mm.Save(&network)
+		if o.Err != nil {
+			return o.Err
+		}
+
+		// create parameters in ssm
+		err = types.UpdatePublicPrivateKeyParameters(context.Background(), &publicKey, &privateKey, network.ID, awsCfg)
+		if err != nil {
+			return err
 		}
 	}
+
+	// update parameter in ssm (in case of port or ip range change
+	var clients []types.VpnClient
+	o := mm.All(&clients)
+	if o.Err != nil {
+		return o.Err
+	}
+
+	clientIPPublicKeyMap := make(map[string]string)
+	for _, c := range clients {
+		networkIds := make([]string, 0)
+		for _, n := range c.Networks {
+			networkIds = append(networkIds, n.ID)
+		}
+		if slices.Contains(networkIds, network.ID) {
+			clientIPPublicKeyMap[c.ClientIP] = c.PublicKey
+		}
+	}
+
+	configFile := types.CreateServerConfigFile(network.WireguardIP, network.WireguardPort, network.WireguardPrivateKey, clientIPPublicKeyMap)
+
+	err := types.UpdateServerConfigFileParameter(context.Background(), configFile, network.ID, awsCfg)
+	if err != nil {
+		return err
+	}
+
+	commandId, err := types.RunSSMCommands(context.Background(), runInitCommands, network.WireguardInstanceID, awsCfg, network.ID)
+	if err != nil {
+		return err
+	}
+	time.Sleep(3 * time.Second) // Have to sleep because there is a delay in the invocation
+	err = types.WaitForCommandSuccess(context.Background(), client, *commandId, network.WireguardInstanceID)
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func generateWireGuardKey() (string, error) {
+	cmd := exec.Command("wg", "genkey")
+	key, err := cmd.Output()
+	if err != nil {
+		fmt.Println("error when generating private key:  ", string(key))
+		return "", err
+	}
+
+	return string(key), nil
+}
+
+func generateWireGuardPublicKey(privateKey string) (string, error) {
+	cmd := exec.Command("wg", "pubkey")
+	cmd.Stdin = strings.NewReader(privateKey)
+	publicKey, err := cmd.Output()
+	if err != nil {
+		fmt.Println("error when generating public key:  ", string(publicKey))
+		return "", err
+	}
+	return string(publicKey), nil
 }
 
 type AlbMap struct {
