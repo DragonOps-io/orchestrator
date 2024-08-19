@@ -325,7 +325,23 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		if err != nil {
 			return err
 		}
-		// TODO Do I need to get all clients for this network and remove the network ids/specs from the client?
+
+		var clients []types.VpnClient
+		operator := mm.All(&clients)
+		if operator.Err != nil {
+			return operator.Err
+		}
+
+		for _, c := range clients {
+			for j := 0; j < len(c.Networks); j++ {
+				if c.Networks[j].ID == network.ID {
+					c.Networks = append(c.Networks[:j], c.Networks[j+1:]...)
+					// Adjust the loop index since we modified the slice
+					j--
+				}
+			}
+		}
+
 		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Deleting network %s record from DynamoDb.", network.Name))
 		o = mm.SoftDelete(&network)
 		if o.Err != nil {
