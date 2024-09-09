@@ -434,12 +434,13 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 						REDMetrics: redUrl,
 						UseMetrics: useUrl,
 					}
-
-					err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, env.AlbDnsName, awsCfg, ctx, albZoneMap[env.Group.Account.Region], mm)
-					if err != nil {
-						ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
-						if ue != nil {
-							return ue
+					if app.SubType == "server" {
+						err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, env.AlbDnsName, awsCfg, ctx, albZoneMap[env.Group.Account.Region], mm)
+						if err != nil {
+							ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+							if ue != nil {
+								return ue
+							}
 						}
 					}
 				}
@@ -517,7 +518,6 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string,
 		if foundRecord != nil {
 			// update the record but only if overwrite is true
 			if r53Domains[di].Overwrite != nil && *r53Domains[di].Overwrite {
-				// update the record
 				foundRecord.Type = r53Types.RRTypeA
 				foundRecord.AliasTarget = &r53Types.AliasTarget{
 					DNSName:      &cfDnsName,
