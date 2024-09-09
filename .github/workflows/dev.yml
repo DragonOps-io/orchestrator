@@ -7,7 +7,7 @@ on:
       - "main"
       - "prod"
       - "preprod"
-# TODO Caching changes are only helpful with self hosted runners
+
 jobs:
 #  ShouldRun:
 #    runs-on: ubuntu-latest
@@ -70,11 +70,11 @@ jobs:
           private-key: ${{ secrets.PRIVATE_SSH_KEY_TYPES_REPO }}
           private-key-name: github-ppk
 
-      - name: Download Go Modules
+      - name: Go Build
         run: |
           go env -w GOPRIVATE=github.com/DragonOps-io/*
           git config --global url."git@github.com:".insteadOf "https://github.com/"
-          go mod download
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o .
 
       - name: Build and push
         uses: docker/build-push-action@v5
