@@ -10,6 +10,8 @@ import (
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
+	r53Types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
@@ -19,6 +21,13 @@ import (
 
 type AppUrl string
 type CloudfrontDistroID string
+
+var albZoneMap = map[string]string{
+	"us-east-1": "Z35SXDOTRQ7X7K",
+	"us-east-2": "Z3AADJGX6KTTL2",
+	"us-west-1": "Z368ELLRRE2KJ0",
+	"us-west-2": "Z1H1FL5HABSF5",
+}
 
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
 	log.Debug().
@@ -105,6 +114,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
 	}
+
 	if !authResponse.IsValid {
 		log.Err(o.Err).Str("AppID", app.ID).Msg("Invalid do api key provided.")
 		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help"))
@@ -142,7 +152,9 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 		log.Debug().Str("AppID", app.ID).Msg("Dry run is false. Running terraform")
 
-		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToApply, execPath)
+		// TODO how do i get the master account role arn and the org id
+		// TODO can't get it from stytch, so i guess we need to make cross-account roles allow admin access from the master account
+		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToApply, execPath, &cfg)
 		if err != nil {
 			log.Err(o.Err).Str("AppID", payload.AppID).Msg(err.Error())
 			ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
@@ -217,7 +229,7 @@ func updateEnvironmentStatusesToApplied(app types.App, environmentsToApply []typ
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string) error {
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string, awsCfg *aws.Config) error {
 	log.Debug().Str("AppID", app.ID).Msg("Templating Terraform with correct values")
 
 	for _, env := range environments {
@@ -277,9 +289,22 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 					if err = json.Unmarshal(out["cloudfront_distribution_id"].Value, &cfDistroID); err != nil {
 						fmt.Printf("Error decoding output value for key %s: %s\n", "cloudfront_distribution_id", err)
 					}
+
+					var cfDnsName string
+					if err = json.Unmarshal(out["cloudfront_dns_name"].Value, &cfDnsName); err != nil {
+						fmt.Printf("Error decoding output value for key %s: %s\n", "cloudfront_dns_name", err)
+					}
 					app.Environments[idx].CloudfrontDistroID = string(cfDistroID)
+
+					err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, cfDnsName, awsCfg, ctx, "Z2FDTNDATAQYW2", mm)
+					if err != nil {
+						ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+						if ue != nil {
+							return ue
+						}
+					}
 				} else {
-					// handle the dashbaord outputs
+					// handle the dashboard outputs
 					var redUrl string
 					if err = json.Unmarshal(out["app_red_dashboard_url"].Value, &redUrl); err != nil {
 						fmt.Printf("Error decoding output value for key %s: %s\n", "app_red_dashboard_url", err)
@@ -300,6 +325,15 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 						REDMetrics: redUrl,
 						UseMetrics: useUrl,
 					}
+					if app.SubType == "server" {
+						err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, env.AlbDnsName, awsCfg, ctx, albZoneMap[env.Group.Account.Region], mm)
+						if err != nil {
+							ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+							if ue != nil {
+								return ue
+							}
+						}
+					}
 				}
 				break
 			}
@@ -311,4 +345,129 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		log.Debug().Str("AppID", app.ID).Msg("App status updated")
 	}
 	return nil
+}
+
+func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string, awsCfg *aws.Config, ctx context.Context, cfOrAlbZoneId string, mm *magicmodel.Operator) error {
+	for di := range r53Domains {
+		// TODO when we support multi-account come back to this
+		//if r53Domains[di].AwsAccountId != nil {
+		// get the account that matches so that if it's not the master account we know and can search correctly
+		//var accounts []types.Account
+		//o := mm.WhereV2(false, &accounts, "AwsAccountId", *dnsAwsAccountId)
+		//if o.Err != nil {
+		//	ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+		//	if ue != nil {
+		//		return ue
+		//	}
+		//	return fmt.Errorf("Error for app with id %s and environment with id %s: %v", app.ID, env.ID, o.Err)
+		//}
+		//
+		//if len(accounts) == 0 {
+		//	ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+		//	if ue != nil {
+		//		return ue
+		//	}
+		//	return fmt.Errorf("Error for app with id %s and environment with id %s: %v", app.ID, env.ID, o.Err)
+		//}
+
+		//if !*accounts[0].IsMasterAccount {
+		//	// assume master account role arn
+		//	masterAcctStsClient := sts.NewFromConfig(*awsCfg)
+		//	masterAccountRoleOutput, err := masterAcctStsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
+		//		RoleArn:         aws.String(masterAccountRoleArn),
+		//		RoleSessionName: aws.String("dragonops-" + strconv.Itoa(10000+rand.Intn(25000))),
+		//		ExternalId:      aws.String(orgId),
+		//	})
+		//	if err != nil {
+		//		return err
+		//	}
+		//
+		//	loadOptions := []func(options *config.LoadOptions) error{
+		//		config.WithRegion(accounts[0].AwsRegion),
+		//		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+		//			*masterAccountRoleOutput.Credentials.AccessKeyId,
+		//			*masterAccountRoleOutput.Credentials.SecretAccessKey,
+		//			*masterAccountRoleOutput.Credentials.SessionToken)),
+		//	}
+		//
+		//	// create account config and set to awsConfig
+		//	dnsAccountCfg, err := config.LoadDefaultConfig(ctx, loadOptions...)
+		//	if err != nil {
+		//		// TODO
+		//		return err
+		//	}
+		//	awsCfg = &dnsAccountCfg
+		//}
+		//}
+
+		// check to see if record exists and if overwrite is true, then overwrite any existing record.
+		dnsClient := route53.NewFromConfig(*awsCfg)
+		foundRecord, err := findMatchingRecordSet(dnsClient, ctx, *r53Domains[di].HostedZoneId, r53Domains[di].DomainName)
+		if err != nil {
+			return err
+		}
+		if foundRecord != nil {
+			// update the record but only if overwrite is true
+			if r53Domains[di].Overwrite != nil && *r53Domains[di].Overwrite {
+				foundRecord.Type = r53Types.RRTypeA
+				foundRecord.AliasTarget = &r53Types.AliasTarget{
+					DNSName:      &cfDnsName,
+					HostedZoneId: &cfOrAlbZoneId,
+				}
+				_, err = dnsClient.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
+					ChangeBatch: &r53Types.ChangeBatch{
+						Changes: []r53Types.Change{
+							{
+								Action:            r53Types.ChangeActionUpsert,
+								ResourceRecordSet: foundRecord,
+							},
+						},
+					},
+					HostedZoneId: r53Domains[di].HostedZoneId,
+				})
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			_, err = dnsClient.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
+				ChangeBatch: &r53Types.ChangeBatch{
+					Changes: []r53Types.Change{
+						{
+							Action: r53Types.ChangeActionCreate,
+							ResourceRecordSet: &r53Types.ResourceRecordSet{
+								Name: &r53Domains[di].DomainName,
+								Type: r53Types.RRTypeA,
+								AliasTarget: &r53Types.AliasTarget{
+									DNSName:      &cfDnsName,
+									HostedZoneId: &cfOrAlbZoneId,
+								},
+							},
+						},
+					},
+				},
+				HostedZoneId: r53Domains[di].HostedZoneId,
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func findMatchingRecordSet(dnsClient *route53.Client, ctx context.Context, hostedZoneId string, domainName string) (*r53Types.ResourceRecordSet, error) {
+	recordsOut, err := dnsClient.ListResourceRecordSets(ctx, &route53.ListResourceRecordSetsInput{HostedZoneId: &hostedZoneId})
+	if err != nil {
+		return nil, err
+	}
+	for i := range recordsOut.ResourceRecordSets {
+		if *recordsOut.ResourceRecordSets[i].Name == domainName+"." {
+			return &recordsOut.ResourceRecordSets[i], nil
+		}
+	}
+	if recordsOut.NextRecordName != nil {
+		return findMatchingRecordSet(dnsClient, ctx, hostedZoneId, domainName)
+	}
+	return nil, nil
 }
