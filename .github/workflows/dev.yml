@@ -7,31 +7,11 @@ on:
       - "main"
       - "prod"
       - "preprod"
-# TODO Caching changes are only helpful with self hosted runners
-jobs:
-#  ShouldRun:
-#    runs-on: ubuntu-latest
-#    outputs:
-#      condition: ${{ steps.condition.outputs.condition }}
-#    steps:
-#      - id: condition
-#        run: |
-#          echo ${{ github.ref_name }}
-#          echo ${{ github.head_ref }}
-#          PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+$'
-#          if [[ "${{ github.ref_name }}" = *"main"* ]] || [[ "${{ github.head_ref }}" = *"main"* ]] || [[ "${{ github.ref_name }}" =~ $PATTERN ]] || [[ "${{ github.head_ref }}" =~ $PATTERN ]]; then
-#             echo "condition=false" >> $GITHUB_OUTPUT
-#             echo false
-#          else
-#             echo "condition=true" >> $GITHUB_OUTPUT
-#             echo true
-#          fi
 
+jobs:
   build_and_push:
     name: Build And Push Dev Image
     runs-on: ubuntu-latest
-#    if: ${{ needs.ShouldRun.outputs.condition == 'true' }}
-#    needs: [ShouldRun]
     permissions:
       contents: read
       id-token: write
@@ -70,11 +50,11 @@ jobs:
           private-key: ${{ secrets.PRIVATE_SSH_KEY_TYPES_REPO }}
           private-key-name: github-ppk
 
-      - name: Download Go Modules
+      - name: Go Build
         run: |
           go env -w GOPRIVATE=github.com/DragonOps-io/*
           git config --global url."git@github.com:".insteadOf "https://github.com/"
-          go mod download
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o .
 
       - name: Build and push
         uses: docker/build-push-action@v5
