@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
 func RunOSCommandOrFail(command string) (*string, error) {
@@ -58,6 +59,34 @@ func IsApiKeyValid(doApiKey string) (*IsValidResponse, error) {
 	}
 
 	response := IsValidResponse{}
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+func RetrieveBugsnagApiKey(devKey string) (*string, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("bugsnag/%s", devKey), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("error occurred: %s; detail: %s", resp.Status, body)
+	}
+
+	response := ""
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return nil, err
