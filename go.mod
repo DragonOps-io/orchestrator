@@ -16,6 +16,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.29.7
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.52.4
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.7
+	github.com/bugsnag/bugsnag-go/v2 v2.5.1
 	github.com/hashicorp/go-version v1.6.0
 	github.com/hashicorp/hc-install v0.6.0
 	github.com/hashicorp/terraform-exec v0.19.0
@@ -44,7 +45,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.18.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.21.7 // indirect
 	github.com/aws/smithy-go v1.20.3 // indirect
-	github.com/bugsnag/bugsnag-go/v2 v2.5.1 // indirect
 	github.com/bugsnag/panicwrap v1.3.4 // indirect
 	github.com/cloudflare/circl v1.3.8 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
