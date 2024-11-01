@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/DragonOps-io/orchestrator/internal/cmdRunners/plan"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"os"
 )
 
 func newPlanCmd() *cobra.Command {
@@ -28,7 +29,6 @@ func newPlanGroupCmd() *cobra.Command {
 				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
 			}
-
 			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
 			if err != nil {
 				log.Error().Str("InstantiateMagicModelOperator", "PlanGroup").Msg(fmt.Sprintf("Encountered an err: %s", err))

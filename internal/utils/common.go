@@ -66,8 +66,13 @@ func IsApiKeyValid(doApiKey string) (*IsValidResponse, error) {
 	return &response, nil
 }
 
-func RetrieveBugsnagApiKey(devKey string) (*string, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("bugsnag/%s", devKey), nil)
+func RetrieveBugsnagApiKey(devKey string, repo string, apiKey string) (*string, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/bugsnag/", os.Getenv("DRAGONOPS_API")), nil)
+
+	req.Header.Add("do-developer-key", devKey)
+	req.Header.Add("do-repo", "bugsnagOrchestratorKey")
+	req.Header.Add("do-api-key", apiKey)
+
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +101,10 @@ func RetrieveBugsnagApiKey(devKey string) (*string, error) {
 
 func GetDoApiKeyFromSecretsManager(ctx context.Context, cfg aws.Config, userName string) (*string, error) {
 	smClient := secretsmanager.NewFromConfig(cfg)
+
+	secretName := fmt.Sprintf("do-api-key/%s", userName)
 	resp, err := smClient.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(fmt.Sprintf("do-api-key/%s", userName)),
+		SecretId: &secretName,
 	})
 	if err != nil {
 		return nil, err
