@@ -67,7 +67,7 @@ func IsApiKeyValid(doApiKey string) (*IsValidResponse, error) {
 }
 
 func RetrieveBugsnagApiKey(devKey string, repo string, apiKey string) (*string, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/bugsnag/", os.Getenv("DRAGONOPS_API")), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/bugsnag", os.Getenv("DRAGONOPS_API")), nil)
 
 	req.Header.Add("do-developer-key", devKey)
 	req.Header.Add("do-repo", "bugsnagOrchestratorKey")
