@@ -4,6 +4,7 @@ FROM alpine:3.18.3
 
 WORKDIR /app
 RUN apk add --no-cache bash git age aws-cli wireguard-tools
+ENV BUGSNAG_DEV_KEY=${BUGSNAG_DEV_KEY}
 COPY orchestrator .
 COPY --from=worker /app/worker .
 COPY --from=worker /app/tmpl.tgz.age .
