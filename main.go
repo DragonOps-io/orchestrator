@@ -12,6 +12,8 @@ import (
 	"github.com/bugsnag/bugsnag-go/v2"
 )
 
+var bugSnagDevKey string
+
 func main() {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
@@ -32,15 +34,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	devKey := os.Getenv("BUGSNAG_DEV_KEY")
-	if devKey == "" {
-		fmt.Println("BUGSNAG_DEV_KEY not set")
-		os.Exit(1)
-	}
-
 	repo := "bugsnagOrchestratorKey"
 
-	bugsnagApiKey, err := utils.RetrieveBugsnagApiKey(devKey, repo, *apiKey)
+	bugsnagApiKey, err := utils.RetrieveBugsnagApiKey(bugSnagDevKey, repo, *apiKey)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)

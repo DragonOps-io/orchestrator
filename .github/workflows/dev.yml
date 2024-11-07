@@ -54,7 +54,7 @@ jobs:
         run: |
           go env -w GOPRIVATE=github.com/DragonOps-io/*
           git config --global url."git@github.com:".insteadOf "https://github.com/"
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.bugSnagDevKey=${{ secrets.BUGSNAG_DEV_KEY}}" -o .
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -65,5 +65,3 @@ jobs:
           ssh: default
           push: true
           provenance: false
-          build-args: |
-            BUGSNAG_DEV_KEY=${{ secrets.BUGSNAG_DEV_KEY }}
