@@ -65,5 +65,5 @@ jobs:
           ssh: default
           push: true
           provenance: false
-          secrets: |
+          build-args: |
             BUGSNAG_DEV_KEY=${{ secrets.BUGSNAG_DEV_KEY }}
