@@ -67,7 +67,10 @@ func GetPayloadUsername() (*string, error) {
 		return nil, err
 	}
 
-	username := payload["user_name"]
+	username, ok := payload["user_name"]
+	if !ok {
+		return nil, fmt.Errorf("user_name not found in payload\n")
+	}
 
 	return &username, nil
 }
