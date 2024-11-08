@@ -10,35 +10,35 @@ import (
 	"github.com/DragonOps-io/orchestrator/internal/utils"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/bugsnag/bugsnag-go/v2"
-	"github.com/rs/zerolog/log"
 )
+
+var bugSnagDevKey string
 
 func main() {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
 	if err != nil {
-		fmt.Println("%s", err)
+		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
 	username, err := GetPayloadUsername()
 	if err != nil {
-		fmt.Println("%s", err)
+		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
 	apiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, *username)
 	if err != nil {
-		fmt.Println("%s", err)
+		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
-	devKey := "8707cf2b-d77e-4e3e-b227-790024844919"
 	repo := "bugsnagOrchestratorKey"
 
-	bugsnagApiKey, err := utils.RetrieveBugsnagApiKey(devKey, repo, *apiKey)
+	bugsnagApiKey, err := utils.RetrieveBugsnagApiKey(bugSnagDevKey, repo, *apiKey)
 	if err != nil {
-		fmt.Println("%s", err)
+		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
@@ -48,8 +48,8 @@ func main() {
 		ProjectPackages: []string{"main", "github.com/DragonOps-io/orchestrator"},
 	})
 
-	if err := cmd.NewRootCommand().ExecuteContext(ctx); err != nil {
-		log.Err(err)
+	if err = cmd.NewRootCommand().ExecuteContext(ctx); err != nil {
+		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 }
