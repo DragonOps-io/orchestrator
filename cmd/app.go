@@ -29,7 +29,7 @@ func newAppApplyCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			payload, err := app.GetPayload()
 			if err != nil {
-				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
+				log.Error().Str("GeAtPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
 			}
 

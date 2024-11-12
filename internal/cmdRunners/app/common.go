@@ -3,9 +3,10 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/rs/zerolog"
 	"os"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 func init() {
@@ -15,6 +16,7 @@ func init() {
 type Payload struct {
 	AppID          string   `json:"app_id"`
 	EnvironmentIDs []string `json:"environment_ids"`
+	JobId          string   `json:"job_id"`
 	JobName        string   `json:"job_name"`
 	Region         string   `json:"region"`
 	UserName       string   `json:"user_name"`
