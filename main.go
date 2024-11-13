@@ -69,7 +69,7 @@ func GetPayloadUsername() (*string, error) {
 	payload := map[string]string{}
 	err := json.Unmarshal([]byte(val), &payload)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Could not unmarshal payload: %s\n", err.Error())
 	}
 
 	username, ok := payload["user_name"]

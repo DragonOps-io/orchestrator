@@ -3,6 +3,9 @@ package plan
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
 	"github.com/DragonOps-io/types"
@@ -11,13 +14,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/rs/zerolog/log"
-	"os"
-	"strings"
 )
 
 func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
 	log.Debug().
 		Str("AppID", payload.AppID).
+		Str("JobId", payload.JobId).
 		Msg("Looking for app with matching ID")
 
 	app := types.App{}
@@ -26,7 +28,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 		log.Err(o.Err).Str("AppID", payload.AppID).Msg("Error finding app")
 		return fmt.Errorf("an error occurred when trying to find the app with id %s: %s", payload.AppID, o.Err)
 	}
-	log.Debug().Str("AppID", app.ID).Msg("Found app")
+	log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Found app")
 
 	var appEnvironmentsToPlan []types.Environment
 	for _, envId := range payload.EnvironmentIDs {
@@ -38,7 +40,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 		}
 		appEnvironmentsToPlan = append(appEnvironmentsToPlan, env)
 	}
-	log.Debug().Str("AppID", app.ID).Msg("Retrieved environments to plan")
+	log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Retrieved environments to plan")
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
@@ -62,7 +64,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 		}
 		return fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", o.Err)
 	}
-	log.Debug().Str("AppID", payload.AppID).Msg("Found Master Account")
+	log.Debug().Str("AppID", payload.AppID).Str("JobId", payload.JobId).Msg("Found Master Account")
 
 	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
 		config.WithRegion(accounts[0].AwsRegion)
@@ -120,7 +122,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 		os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
 	}
 
-	log.Debug().Str("AppID", app.ID).Msg("Preparing Terraform")
+	log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Preparing Terraform")
 
 	var execPath *string
 	execPath, err = terraform.PrepareTerraform(ctx)
@@ -134,9 +136,9 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 		return err
 	}
 
-	log.Debug().Str("AppID", app.ID).Msg("Dry run is false. Running terraform")
+	log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Dry run is false. Running terraform")
 
-	err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToPlan, execPath, cfg, payload.PlanId, *accounts[0].StateBucketName)
+	err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToPlan, execPath, cfg, payload.PlanId, *accounts[0].StateBucketName, payload)
 	if err != nil {
 		log.Err(o.Err).Str("AppID", payload.AppID).Msg(err.Error())
 		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToPlan, mm, err)
@@ -150,7 +152,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 	queueParts := strings.Split(*app.AppSqsArn, ":")
 	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
 
-	log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
+	log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
 
 	_, err = sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      &queueUrl,
@@ -185,8 +187,8 @@ func updateEnvironmentStatusesToApplyFailed(app types.App, environmentsToApply [
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string, awsConfig aws.Config, planId string, stateBucketName string) error {
-	log.Debug().Str("AppID", app.ID).Msg("Templating Terraform with correct values")
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string, awsConfig aws.Config, planId string, stateBucketName string, payload Payload) error {
+	log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Templating Terraform with correct values")
 
 	for _, env := range environments {
 		appPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
@@ -199,10 +201,10 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			command = fmt.Sprintf("./app/worker app apply --app-id %s --environment-id %s --table-region %s", app.ID, env.ID, masterAcctRegion)
 		}
 
-		log.Debug().Str("AppID", app.ID).Msg(appPath)
-		log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Applying application files found at %s", os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION")))
+		log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(appPath)
+		log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying application files found at %s", os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION")))
 
-		log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Running command %s", command))
+		log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Running command %s", command))
 		msg, err := utils.RunOSCommandOrFail(command)
 		if err != nil {
 			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
@@ -211,7 +213,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			}
 			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
-		log.Debug().Str("AppID", app.ID).Msg(*msg)
+		log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(*msg)
 
 		var roleToAssume *string
 		if env.Group.Account.CrossAccountRoleArn != nil {
@@ -227,7 +229,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			return fmt.Errorf("Error running plan with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
 
-		log.Debug().Str("AppID", app.ID).Msg("Updating app status")
+		log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Updating app status")
 
 		for idx := range app.Environments {
 			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
@@ -239,7 +241,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		if o.Err != nil {
 			return o.Err
 		}
-		log.Debug().Str("AppID", app.ID).Msg("App status updated")
+		log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("App status updated")
 	}
 	return nil
 }

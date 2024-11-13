@@ -4,6 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
 	"github.com/DragonOps-io/types"
@@ -15,13 +23,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"slices"
-	"strings"
-	"sync"
-	"time"
 )
 
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
@@ -35,7 +36,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		log.Err(o.Err).Str("GroupID", payload.GroupID).Msg("Error finding group")
 		return fmt.Errorf("Error when trying to retrieve group with id %s: %s", payload.GroupID, o.Err)
 	}
-	log.Debug().Str("GroupID", group.ID).Msg("Found group")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Found group")
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
@@ -69,7 +70,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 		return fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", aco.Err)
 	}
-	log.Debug().Str("GroupID", group.ID).Msg("Found MasterAccount")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Found MasterAccount")
 
 	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
 		config.WithRegion(accounts[0].AwsRegion)
@@ -173,7 +174,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 
 		var execPath *string
-		log.Debug().Str("GroupID", group.ID).Msg("Preparing Terraform")
+		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Preparing Terraform")
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
 			log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
@@ -190,8 +191,8 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			return err
 		}
 
-		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
-		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, cfg)
+		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
+		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, cfg, payload)
 		if err != nil {
 			log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
 			o = mm.Update(&group, "Status", "APPLY_FAILED")
@@ -208,7 +209,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 	}
 
-	log.Debug().Str("GroupID", group.ID).Msg("Updating group status")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Updating group status")
 	o = mm.Update(&group, "Status", "APPLIED")
 	if o.Err != nil {
 		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
@@ -220,11 +221,11 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		return o.Err
 	}
 
-	log.Debug().Str("GroupID", group.ID).Msg("Finished applying group!")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Finished applying group!")
 	queueParts := strings.Split(group.Account.GroupSqsArn, ":")
 	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
 
-	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
 
 	_, err = sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      &queueUrl,
@@ -237,15 +238,15 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config) error {
-	log.Debug().Str("GroupID", group.ID).Msg("Templating Terraform with correct values")
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config, payload Payload) error {
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Templating Terraform with correct values")
 
 	command := fmt.Sprintf("/app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
 	if os.Getenv("IS_LOCAL") == "true" {
 		command = fmt.Sprintf("./app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
 	}
 
-	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Running command %s", command))
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Running command %s", command))
 	msg, err := utils.RunOSCommandOrFail(command)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
@@ -259,10 +260,10 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		return fmt.Errorf("Error running `worker group apply` for group with id %s: %s: %s", group.ID, err, *msg)
 	}
 
-	log.Debug().Str("GroupID", group.ID).Msg("Applying group Terraform")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Applying group Terraform")
 	// can't use a for loop because we need to do it in order
 	// apply networks all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "network", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "network", cfg, payload)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -276,7 +277,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply clusters all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster", cfg, payload)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -290,7 +291,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply cluster grafana all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg, payload)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -304,7 +305,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment", cfg, payload)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -318,7 +319,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply static environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static", cfg, payload)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -332,7 +333,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "rds", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "rds", cfg, payload)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -347,10 +348,10 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	return nil
 }
 
-func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config) error {
+func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config, payload Payload) error {
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
-	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying all %ss", dirName))
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying all %ss", dirName))
 
 	// go routine setup stuff
 	wg := &sync.WaitGroup{}
@@ -359,13 +360,13 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 	// run all the applies in parallel in each folder
 	for _, d := range directories {
 		wg.Add(1)
-		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
+		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
 
 		go func(dir os.DirEntry) {
 			defer wg.Done()
 			// apply terraform or return an error
-			log.Debug().Str("GroupID", group.ID).Msg(path)
+			log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(path)
 			out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
