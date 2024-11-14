@@ -150,7 +150,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	}
 
 	if roleToAssume != nil {
-		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Str("JobId", payload.JobId).Msg("Assuming cross account role.")
+		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Assuming cross account role.")
 		cfg, err = getCrossAccountConfig(ctx, cfg, *roleToAssume, group.Account.AwsAccountId, group.Account.Region)
 		if err != nil {
 			log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Error assuming cross account role")

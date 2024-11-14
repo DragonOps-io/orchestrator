@@ -205,12 +205,12 @@ func GroupPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) er
 	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Updating group status")
 	o = mm.Update(&group, "Status", "APPLIED")
 	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Str("JobId", payload.JobId).Msg(o.Err.Error())
+		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return o.Err
 	}
 	o = mm.Update(&group, "FailedReason", "")
 	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Str("JobId", payload.JobId).Msg(o.Err.Error())
+		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return o.Err
 	}
 
