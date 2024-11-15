@@ -18,18 +18,21 @@ func main() {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
 	if err != nil {
+		fmt.Println("config.LoadDefaultConfig()")
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
 	username, err := GetPayloadUsername()
 	if err != nil {
+		fmt.Println("GetPayloadUsername()")
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
 	apiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, *username)
 	if err != nil {
+		fmt.Println("utils.GetDoApiKeyFromSecretsManager()")
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
@@ -38,6 +41,7 @@ func main() {
 
 	bugsnagApiKey, err := utils.RetrieveBugsnagApiKey(bugSnagDevKey, repo, *apiKey)
 	if err != nil {
+		fmt.Println("utils.RetrieveBugsnagApiKey()")
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
@@ -49,6 +53,7 @@ func main() {
 	})
 
 	if err = cmd.NewRootCommand().ExecuteContext(ctx); err != nil {
+		fmt.Println("cmd.NewRootCommand().ExecuteContext()")
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
@@ -64,7 +69,7 @@ func GetPayloadUsername() (*string, error) {
 	payload := map[string]string{}
 	err := json.Unmarshal([]byte(val), &payload)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Could not unmarshal payload: %s\n", err.Error())
 	}
 
 	username, ok := payload["user_name"]
