@@ -39,7 +39,7 @@ func newAppApplyCmd() *cobra.Command {
 				os.Exit(1)
 			}
 			isDryRun, err := cmd.Flags().GetBool("dry-run")
-			log.Debug().Str("ApplyApp", "isDryRunValue").Str("JobId", "TEST").Msg(fmt.Sprintf("%v", isDryRun))
+			log.Debug().Str("ApplyApp", "isDryRunValue").Str("JobId", payload.JobId).Msg(fmt.Sprintf("%v", isDryRun))
 
 			err = app.Apply(cmd.Context(), *payload, mm, isDryRun)
 			if err != nil {
