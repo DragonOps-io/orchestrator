@@ -66,16 +66,16 @@ func GetPayloadUsername() (*string, error) {
 		return nil, fmt.Errorf("%s not set\n", "MESSAGE")
 	}
 
-	payload := map[string]string{}
+	payload := map[string]interface{}{}
 	err := json.Unmarshal([]byte(val), &payload)
 	if err != nil {
-		return nil, fmt.Errorf("Could not unmarshal payload: %s\n", err.Error())
+		return nil, err
 	}
 
 	username, ok := payload["user_name"]
 	if !ok {
 		return nil, fmt.Errorf("user_name not found in payload\n")
 	}
-
-	return &username, nil
+	stringUsername := username.(string)
+	return &stringUsername, nil
 }
