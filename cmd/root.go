@@ -18,5 +18,6 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newGroupCmd())
 	rootCmd.AddCommand(newAppCommand())
 	rootCmd.AddCommand(newPlanCmd())
+	rootCmd.AddCommand(newObservabilityCmd())
 	return rootCmd
 }
