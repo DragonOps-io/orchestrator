@@ -171,12 +171,11 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	}
 
 	log.Debug().Str("JobId", payload.JobId).Msg("Updating observability status")
-	o = mm.Update(&masterAccount, "Observability.Status", "APPLIED")
-	if o.Err != nil {
-		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
-		return o.Err
-	}
-	o = mm.Update(&masterAccount, "FailedReason", "")
+
+	masterAccount.Observability.Enabled = true
+	masterAccount.Observability.Status = "APPLIED"
+	masterAccount.Observability.FailedReason = ""
+	o = mm.Save(&masterAccount)
 	if o.Err != nil {
 		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return o.Err
