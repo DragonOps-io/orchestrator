@@ -155,7 +155,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		// TODO
 		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, masterAccount, execPath, cfg, payload)
 		if err != nil {
-
 			log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
 			aco := mm.Update(&masterAccount, "Observability.Status", "APPLY_FAILED")
 			if aco.Err != nil {
@@ -212,6 +211,12 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	log.Debug().Str("JobId", payload.JobId).Msg(fmt.Sprintf("Running command %s", command))
 	msg, err := utils.RunOSCommandOrFail(command)
 	if err != nil {
+		// avoid nil pointer deference error
+		strMsg := ""
+		if msg != nil {
+			strMsg = *msg
+		}
+		log.Err(err).Str("JobId", payload.JobId).Msg(strMsg)
 		o := mm.Update(&account, "Observability.Status", "APPLY_FAILED")
 		if o.Err != nil {
 			return o.Err
@@ -220,12 +225,6 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		if o.Err != nil {
 			return o.Err
 		}
-		// avoid nil pointer deference error
-		strMsg := ""
-		if msg != nil {
-			strMsg = *msg
-		}
-		log.Err(err).Str("JobId", payload.JobId).Msg(strMsg)
 		return fmt.Errorf("Error running `worker observability apply` for account: %s: %s", err, strMsg)
 	}
 
