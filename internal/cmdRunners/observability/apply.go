@@ -228,7 +228,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		return fmt.Errorf("Error running `worker observability apply` for account: %s: %s", err, strMsg)
 	}
 
-	log.Debug().Str("JobId", payload.JobId).Msg("Applying group Terraform")
+	log.Debug().Str("JobId", payload.JobId).Msg("Applying observability Terraform")
 
 	err = apply(ctx, mm, account, execPath, nil, "observability", cfg, payload)
 	if err != nil {
