@@ -14,7 +14,7 @@ import (
 func newObservabilityCmd() *cobra.Command {
 	cmmd := &cobra.Command{
 		Use:   "observability",
-		Short: "Interact with groups",
+		Short: "Interact with observability",
 	}
 	cmmd.AddCommand(newObservabilityApplyCmd())
 	//environmentCmd.AddCommand(newGroupDestroyCmd())

@@ -225,6 +225,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		if msg != nil {
 			strMsg = *msg
 		}
+		log.Err(err).Str("JobId", payload.JobId).Msg(strMsg)
 		return fmt.Errorf("Error running `worker observability apply` for account: %s: %s", err, strMsg)
 	}
 
