@@ -212,11 +212,11 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	log.Debug().Str("JobId", payload.JobId).Msg(fmt.Sprintf("Running command %s", command))
 	msg, err := utils.RunOSCommandOrFail(command)
 	if err != nil {
-		o := mm.Update(&account, "Status", "APPLY_FAILED")
+		o := mm.Update(&account, "Observability.Status", "APPLY_FAILED")
 		if o.Err != nil {
 			return o.Err
 		}
-		o = mm.Update(&account, "FailedReason", err.Error())
+		o = mm.Update(&account, "Observability.Status", err.Error())
 		if o.Err != nil {
 			return o.Err
 		}
