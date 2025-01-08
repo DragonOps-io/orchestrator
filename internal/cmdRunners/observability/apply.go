@@ -201,7 +201,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, account types.Account, execPath *string, cfg aws.Config, payload Payload) error {
 	log.Debug().Str("JobId", payload.JobId).Msg("Templating Terraform with correct values")
 
-	// TODO implement in worker
 	command := fmt.Sprintf("/app/worker observability apply --table-region %s", masterAcctRegion)
 	if os.Getenv("IS_LOCAL") == "true" {
 		command = fmt.Sprintf("./app/worker observability apply --table-region %s", masterAcctRegion)
@@ -216,11 +215,9 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			strMsg = *msg
 		}
 		log.Err(err).Str("JobId", payload.JobId).Msg(strMsg)
-		o := mm.Update(&account, "Observability.Status", "APPLY_FAILED")
-		if o.Err != nil {
-			return o.Err
-		}
-		o = mm.Update(&account, "Observability.Status", err.Error())
+		account.Observability.Status = "APPLY_FAILED"
+		account.Observability.FailedReason = fmt.Sprintf("%s: %s", err, strMsg)
+		o := mm.Save(&account)
 		if o.Err != nil {
 			return o.Err
 		}
