@@ -204,7 +204,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 	log.Debug().Str("JobId", payload.JobId).Msg("Applying observability Terraform")
 
-	err = apply(ctx, mm, account, execPath, nil, "observability", cfg, payload)
+	err = apply(ctx, mm, account, execPath, nil, account.AwsAccountId, cfg, payload)
 	if err != nil {
 		log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
 		account.Observability.Status = "APPLY_FAILED"
@@ -221,7 +221,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 func apply(ctx context.Context, mm *magicmodel.Operator, account types.Account, execPath *string, roleToAssume *string, dirName string, cfg aws.Config, payload Payload) error {
 	//directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
-	path, _ := filepath.Abs(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"))
+	path, _ := filepath.Abs(fmt.Sprintf("%s/%s", os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName))
 
 	log.Debug().Str("JobId", payload.JobId).Msg(path)
 	out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
