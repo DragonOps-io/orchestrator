@@ -40,15 +40,12 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
 		log.Err(fmt.Errorf("no RECEIPT_HANDLE variable found")).Str("JobId", payload.JobId).Msg("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
-		aco := mm.Update(&masterAccount, "Observability.Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&masterAccount, "Observability.FailedReason", "No RECEIPT_HANDLE variable found.")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
+		masterAccount.Observability.Status = "APPLY_FAILED"
+		masterAccount.Observability.FailedReason = fmt.Errorf("no RECEIPT_HANDLE variable found").Error()
+		o = mm.Save(&masterAccount)
+		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			return o.Err
 		}
 		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
 	}
@@ -58,16 +55,12 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		return nil
 	})
 	if err != nil {
-		log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
-		aco := mm.Update(&masterAccount, "Observability.Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&masterAccount, "Observability.FailedReason", err.Error())
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
+		masterAccount.Observability.Status = "APPLY_FAILED"
+		masterAccount.Observability.FailedReason = err.Error()
+		o = mm.Save(&masterAccount)
+		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			return o.Err
 		}
 		return err
 	}
@@ -76,46 +69,36 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
 		log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
-		aco := mm.Update(&masterAccount, "Observability.Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&masterAccount, "Observability.FailedReason", err.Error())
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
+		masterAccount.Observability.Status = "APPLY_FAILED"
+		masterAccount.Observability.FailedReason = err.Error()
+		o = mm.Save(&masterAccount)
+		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			return o.Err
 		}
 		return err
 	}
 
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
-		log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
-		aco := mm.Update(&masterAccount, "Observability.Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&masterAccount, "Observability.FailedReason", err.Error())
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
+		masterAccount.Observability.Status = "APPLY_FAILED"
+		masterAccount.Observability.FailedReason = err.Error()
+		o = mm.Save(&masterAccount)
+		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			return o.Err
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
 	}
 
 	if !authResponse.IsValid {
 		log.Err(fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")).Str("JobId", payload.JobId).Msg("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-		aco := mm.Update(&masterAccount, "Observability.Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&masterAccount, "Observability.FailedReason", fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help."))
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
+		masterAccount.Observability.Status = "APPLY_FAILED"
+		masterAccount.Observability.FailedReason = fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.").Error()
+		o = mm.Save(&masterAccount)
+		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			return o.Err
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 	}
@@ -138,15 +121,12 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
 			log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
-			aco := mm.Update(&masterAccount, "Observability.Status", "APPLY_FAILED")
-			if aco.Err != nil {
-				log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-				return aco.Err
-			}
-			aco = mm.Update(&masterAccount, "Observability.FailedReason", err.Error())
-			if aco.Err != nil {
-				log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-				return aco.Err
+			masterAccount.Observability.Status = "APPLY_FAILED"
+			masterAccount.Observability.FailedReason = err.Error()
+			o = mm.Save(&masterAccount)
+			if o.Err != nil {
+				log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+				return o.Err
 			}
 			return err
 		}
@@ -156,15 +136,12 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, masterAccount, execPath, cfg, payload)
 		if err != nil {
 			log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
-			aco := mm.Update(&masterAccount, "Observability.Status", "APPLY_FAILED")
-			if aco.Err != nil {
-				log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-				return aco.Err
-			}
-			aco = mm.Update(&masterAccount, "Observability.FailedReason", err.Error())
-			if aco.Err != nil {
-				log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-				return aco.Err
+			masterAccount.Observability.Status = "APPLY_FAILED"
+			masterAccount.Observability.FailedReason = err.Error()
+			o = mm.Save(&masterAccount)
+			if o.Err != nil {
+				log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+				return o.Err
 			}
 			return err
 		}
@@ -219,6 +196,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		account.Observability.FailedReason = fmt.Sprintf("%s: %s", err, strMsg)
 		o := mm.Save(&account)
 		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return o.Err
 		}
 		return fmt.Errorf("Error running `worker observability apply` for account: %s: %s", err, strMsg)
@@ -228,15 +206,13 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 	err = apply(ctx, mm, account, execPath, nil, "observability", cfg, payload)
 	if err != nil {
-		aco := mm.Update(&account, "Observability.Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&account, "Observability.FailedReason", err.Error())
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
+		log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
+		account.Observability.Status = "APPLY_FAILED"
+		account.Observability.FailedReason = err.Error()
+		o := mm.Save(&account)
+		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			return o.Err
 		}
 		return fmt.Errorf("Error running apply for observability stack: %s", err)
 	}
@@ -251,6 +227,13 @@ func apply(ctx context.Context, mm *magicmodel.Operator, account types.Account, 
 	out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 	if err != nil {
 		//errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+		account.Observability.Status = "APPLY_FAILED"
+		account.Observability.FailedReason = err.Error()
+		o := mm.Save(&account)
+		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			return o.Err
+		}
 		return err
 	}
 
@@ -258,6 +241,13 @@ func apply(ctx context.Context, mm *magicmodel.Operator, account types.Account, 
 	err = saveOutputs(mm, out, account, path)
 	if err != nil {
 		//errors <- fmt.Errorf("error saving outputs for %s %s: %v", dirName, dir.Name(), err)
+		account.Observability.Status = "APPLY_FAILED"
+		account.Observability.FailedReason = err.Error()
+		o := mm.Save(&account)
+		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			return o.Err
+		}
 		return err
 	}
 	//
