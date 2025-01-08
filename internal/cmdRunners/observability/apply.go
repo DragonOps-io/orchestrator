@@ -220,8 +220,8 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 }
 
 func apply(ctx context.Context, mm *magicmodel.Operator, account types.Account, execPath *string, roleToAssume *string, dirName string, cfg aws.Config, payload Payload) error {
-	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
-	path, _ := filepath.Abs(filepath.Join(directoryPath, directoryPath))
+	//directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
+	path, _ := filepath.Abs(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"))
 
 	log.Debug().Str("JobId", payload.JobId).Msg(path)
 	out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
