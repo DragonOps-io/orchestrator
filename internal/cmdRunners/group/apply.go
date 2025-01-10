@@ -613,6 +613,15 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 		log.Info().Str("GroupID", groupID).Msg("vpc_endpoint_id not found in outputs")
 	}
 
+	vpcEndpointDnsName := ""
+	if value, ok := outputs["vpc_endpoint_dns_name"]; ok {
+		if err := json.Unmarshal(value.Value, &vpcEndpointDnsName); err != nil {
+			return nil, fmt.Errorf("Error decoding output value for key %s: %s", "vpc_endpoint_dns_name", err)
+		}
+	} else {
+		log.Info().Str("GroupID", groupID).Msg("vpc_endpoint_id not found in outputs")
+	}
+
 	var networks []types.Network
 	o := mm.WhereV2(true, &networks, "Group.ID", groupID).WhereV2(false, &networks, "ResourceLabel", networkResourceLabel)
 	if o.Err != nil {
@@ -626,6 +635,7 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	network.WireguardInstanceID = wireguardInstanceID
 	network.WireguardPublicIP = wireguardPublicIP
 	network.VpcEndpointId = vpcEndpointId
+	network.VpcEndpointDnsName = vpcEndpointDnsName
 
 	o = mm.Save(&network)
 	if o.Err != nil {
