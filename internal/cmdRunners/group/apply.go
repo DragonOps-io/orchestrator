@@ -3,7 +3,10 @@ package group
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/smithy-go"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -192,7 +195,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 
 		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
-		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, cfg, payload)
+		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, cfg, payload, accounts[0])
 		if err != nil {
 			log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
 			o = mm.Update(&group, "Status", "APPLY_FAILED")
@@ -238,7 +241,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config, payload Payload) error {
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config, payload Payload, masterAccount types.Account) error {
 	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Templating Terraform with correct values")
 
 	command := fmt.Sprintf("/app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
@@ -263,7 +266,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Applying group Terraform")
 	// can't use a for loop because we need to do it in order
 	// apply networks all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "network", cfg, payload)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "network", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -277,7 +280,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply clusters all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster", cfg, payload)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -291,7 +294,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply cluster grafana all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg, payload)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -305,7 +308,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment", cfg, payload)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -319,7 +322,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply static environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static", cfg, payload)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -333,7 +336,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "rds", cfg, payload)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "rds", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -348,7 +351,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	return nil
 }
 
-func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config, payload Payload) error {
+func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config, payload Payload, masterAccount types.Account) error {
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
 	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying all %ss", dirName))
@@ -380,6 +383,14 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 				if err != nil {
 					errors <- fmt.Errorf("error saving outputs for %s %s: %v", dirName, dir.Name(), err)
 					return
+				}
+
+				if masterAccount.Observability != nil && masterAccount.Observability.Enabled && network.VpcEndpointId != "" {
+					err = handleVpcConnectionsForObservability(ctx, *network, cfg, masterAccount)
+					if err != nil {
+						errors <- fmt.Errorf("error updating wireguard for %s %s: %v", dirName, dir.Name(), err)
+						return
+					}
 				}
 
 				err = handleWireguardUpdates(mm, *network, cfg)
@@ -593,6 +604,15 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "vpc", err)
 	}
 
+	vpcEndpointId := ""
+	if value, ok := outputs["vpc_endpoint_id"]; ok {
+		if err := json.Unmarshal(value.Value, &vpcEndpointId); err != nil {
+			return nil, fmt.Errorf("Error decoding output value for key %s: %s", "vpc_endpoint_id", err)
+		}
+	} else {
+		log.Info().Str("GroupID", groupID).Msg("vpc_endpoint_id not found in outputs")
+	}
+
 	var networks []types.Network
 	o := mm.WhereV2(true, &networks, "Group.ID", groupID).WhereV2(false, &networks, "ResourceLabel", networkResourceLabel)
 	if o.Err != nil {
@@ -605,6 +625,7 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	network.VpcID = vpcMap["vpc_id"].(string)
 	network.WireguardInstanceID = wireguardInstanceID
 	network.WireguardPublicIP = wireguardPublicIP
+	network.VpcEndpointId = vpcEndpointId
 
 	o = mm.Save(&network)
 	if o.Err != nil {
@@ -612,6 +633,20 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	}
 
 	return &network, nil
+}
+
+func handleVpcConnectionsForObservability(ctx context.Context, network types.Network, awsCfg aws.Config, masterAccount types.Account) error {
+	client := ec2.NewFromConfig(awsCfg)
+	err := acceptPendingConnections(ctx, client, masterAccount.Observability.VpcEndpointServiceId, network.VpcEndpointId)
+	if err != nil {
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "InvalidState" {
+			log.Info().Str("GroupID", network.Group.ID).Msg("Ignoring InvalidState error")
+			return nil
+		}
+		return fmt.Errorf("failed to accept connection: %w", err)
+	}
+	return nil
 }
 
 func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsCfg aws.Config) error {
@@ -714,4 +749,13 @@ type AlbMap struct {
 	SecurityGroupId  string                 `json:"security_group_id"`
 	TargetGroups     map[string]interface{} `json:"target_groups"`
 	ZoneId           string                 `json:"zone_id"`
+}
+
+func acceptPendingConnections(ctx context.Context, client *ec2.Client, serviceID string, endpointId string) error {
+	// Accept VPC endpoint connections
+	_, err := client.AcceptVpcEndpointConnections(ctx, &ec2.AcceptVpcEndpointConnectionsInput{
+		ServiceId:      aws.String(serviceID),
+		VpcEndpointIds: []string{endpointId},
+	})
+	return err
 }
