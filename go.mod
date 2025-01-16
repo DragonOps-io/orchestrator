@@ -3,7 +3,7 @@ module github.com/DragonOps-io/orchestrator
 go 1.22.2
 
 require (
-	github.com/DragonOps-io/types v0.0.0-20250111164026-c8f3c0818715
+	github.com/DragonOps-io/types v0.0.0-20250116204156-9b6ff78a873f
 	github.com/Ilios-LLC/magicmodel-go v0.0.0-20240607010643-b92047a2c75a
 	github.com/aws/aws-sdk-go-v2 v1.30.3
 	github.com/aws/aws-sdk-go-v2/config v1.26.6
@@ -16,7 +16,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.29.7
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.52.4
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.7
-	github.com/aws/smithy-go v1.20.3
 	github.com/bugsnag/bugsnag-go/v2 v2.5.1
 	github.com/hashicorp/go-version v1.6.0
 	github.com/hashicorp/hc-install v0.6.0
@@ -45,6 +44,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.18.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.21.7 // indirect
+	github.com/aws/smithy-go v1.20.3 // indirect
 	github.com/bugsnag/panicwrap v1.3.4 // indirect
 	github.com/cloudflare/circl v1.3.8 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect

@@ -3,10 +3,8 @@ package group
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/aws/smithy-go"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -385,13 +383,14 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 					return
 				}
 
-				if masterAccount.Observability != nil && masterAccount.Observability.Enabled && network.VpcEndpointId != "" {
-					err = handleVpcConnectionsForObservability(ctx, *network, cfg, masterAccount)
-					if err != nil {
-						errors <- fmt.Errorf("error updating wireguard for %s %s: %v", dirName, dir.Name(), err)
-						return
-					}
-				}
+				// TODO currently handled in terraform
+				//if masterAccount.Observability != nil && masterAccount.Observability.Enabled && network.VpcEndpointId != "" {
+				//	err = handleVpcConnectionsForObservability(ctx, *network, cfg, masterAccount)
+				//	if err != nil {
+				//		errors <- fmt.Errorf("error updating wireguard for %s %s: %v", dirName, dir.Name(), err)
+				//		return
+				//	}
+				//}
 
 				err = handleWireguardUpdates(mm, *network, cfg)
 				if err != nil {
@@ -645,19 +644,20 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	return &network, nil
 }
 
-func handleVpcConnectionsForObservability(ctx context.Context, network types.Network, awsCfg aws.Config, masterAccount types.Account) error {
-	client := ec2.NewFromConfig(awsCfg)
-	err := acceptPendingConnections(ctx, client, masterAccount.Observability.VpcEndpointServiceId, network.VpcEndpointId)
-	if err != nil {
-		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "InvalidState" {
-			log.Info().Str("GroupID", network.Group.ID).Msg("Ignoring InvalidState error")
-			return nil
-		}
-		return fmt.Errorf("failed to accept connection: %w", err)
-	}
-	return nil
-}
+// TODO THis is currently in terraform but not sure if we need it here or not currently.
+//func handleVpcConnectionsForObservability(ctx context.Context, network types.Network, awsCfg aws.Config, masterAccount types.Account) error {
+//	client := ec2.NewFromConfig(awsCfg)
+//	err := acceptPendingConnections(ctx, client, masterAccount.Observability.VpcEndpointServiceId, network.VpcEndpointId)
+//	if err != nil {
+//		var apiErr smithy.APIError
+//		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "InvalidState" {
+//			log.Info().Str("GroupID", network.Group.ID).Msg("Ignoring InvalidState error")
+//			return nil
+//		}
+//		return fmt.Errorf("failed to accept connection: %w", err)
+//	}
+//	return nil
+//}
 
 func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsCfg aws.Config) error {
 	// create ssm client
