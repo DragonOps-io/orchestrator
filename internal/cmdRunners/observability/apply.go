@@ -269,9 +269,15 @@ func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, 
 		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_private_dns_name", err)
 	}
 
+	var nlbInternalDnsName string
+	if err := json.Unmarshal(outputs["nlb_internal_dns_name"].Value, &nlbInternalDnsName); err != nil {
+		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_internal_dns_name", err)
+	}
+
 	account.Observability.VpcEndpointServiceName = vpcEndpointServiceName
 	account.Observability.VpcEndpointServiceId = vpcEndpointServiceId
 	account.Observability.VpcEndpointServicePrivateDns = vpcEndpointServicePrivateDnsName
+	account.Observability.NlbInternalDnsName = nlbInternalDnsName
 
 	o := mm.Save(&account)
 	if o.Err != nil {
