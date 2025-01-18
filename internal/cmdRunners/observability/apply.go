@@ -241,14 +241,14 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 		return nil, err
 	}
 
-	var orchestratorNetwork types.Network
+	var orchestratorNetwork []types.Network
 	o := mm.WhereV2(false, &orchestratorNetwork, "Name", aws.String("dragonops-orchestrator"))
 	if o.Err != nil {
 		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return nil, o.Err
 	}
 
-	updatedAccount, updatedNetwork, err := saveOutputs(mm, out, account, orchestratorNetwork)
+	updatedAccount, updatedNetwork, err := saveOutputs(mm, out, account, orchestratorNetwork[0])
 	if err != nil {
 		//errors <- fmt.Errorf("error saving outputs for %s %s: %v", dirName, dir.Name(), err)
 		account.Observability.Status = "APPLY_FAILED"
