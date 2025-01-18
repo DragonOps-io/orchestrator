@@ -263,7 +263,13 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 
 	err = handleWireguardUpdates(mm, *updatedNetwork, cfg)
 	if err != nil {
-		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+		account.Observability.Status = "APPLY_FAILED"
+		account.Observability.FailedReason = err.Error()
+		o = mm.Save(&account)
+		if o.Err != nil {
+			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			return nil, o.Err
+		}
 		return nil, err
 	}
 
