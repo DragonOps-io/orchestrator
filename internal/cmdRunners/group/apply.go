@@ -673,6 +673,7 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 		if err != nil {
 			return err
 		}
+
 		network.WireguardPublicKey = strings.TrimSpace(publicKey)
 		network.WireguardPrivateKey = strings.TrimSpace(privateKey)
 

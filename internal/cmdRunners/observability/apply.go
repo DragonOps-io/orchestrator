@@ -11,11 +11,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 )
 
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
@@ -133,7 +137,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 
 		log.Debug().Str("JobId", payload.JobId).Msg(fmt.Sprintf("Region for magic model is: %s", masterAccount.AwsRegion))
-		updatedAccount, err := formatWithWorkerAndApply(ctx, masterAccount.AwsRegion, mm, masterAccount, execPath, payload)
+		updatedAccount, err := formatWithWorkerAndApply(ctx, cfg, masterAccount.AwsRegion, mm, masterAccount, execPath, payload)
 		if err != nil {
 			log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
 			masterAccount.Observability.Status = "APPLY_FAILED"
@@ -176,7 +180,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, account types.Account, execPath *string, payload Payload) (*types.Account, error) {
+func formatWithWorkerAndApply(ctx context.Context, cfg aws.Config, masterAcctRegion string, mm *magicmodel.Operator, account types.Account, execPath *string, payload Payload) (*types.Account, error) {
 	log.Debug().Str("JobId", payload.JobId).Msg("Templating Terraform with correct values")
 
 	command := fmt.Sprintf("/app/worker observability apply --table-region %s", masterAcctRegion)
@@ -205,7 +209,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 	log.Debug().Str("JobId", payload.JobId).Msg("Applying observability Terraform")
 
-	updatedAccount, err := apply(ctx, mm, account, execPath, nil, account.AwsAccountId, payload)
+	updatedAccount, err := apply(ctx, cfg, mm, account, execPath, nil, account.AwsAccountId, payload)
 	if err != nil {
 		log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
 		account.Observability.Status = "APPLY_FAILED"
@@ -220,7 +224,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	return updatedAccount, nil
 }
 
-func apply(ctx context.Context, mm *magicmodel.Operator, account types.Account, execPath *string, roleToAssume *string, dirName string, payload Payload) (*types.Account, error) {
+func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account types.Account, execPath *string, roleToAssume *string, dirName string, payload Payload) (*types.Account, error) {
 	path, _ := filepath.Abs(fmt.Sprintf("%s/%s", os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName))
 
 	log.Debug().Str("JobId", payload.JobId).Msg(path)
@@ -237,12 +241,19 @@ func apply(ctx context.Context, mm *magicmodel.Operator, account types.Account, 
 		return nil, err
 	}
 
-	updatedAccount, err := saveOutputs(mm, out, account)
+	var orchestratorNetwork types.Network
+	o := mm.WhereV2(false, &orchestratorNetwork, "Name", aws.String("dragonops-orchestrator"))
+	if o.Err != nil {
+		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+		return nil, o.Err
+	}
+
+	updatedAccount, updatedNetwork, err := saveOutputs(mm, out, account, orchestratorNetwork)
 	if err != nil {
 		//errors <- fmt.Errorf("error saving outputs for %s %s: %v", dirName, dir.Name(), err)
 		account.Observability.Status = "APPLY_FAILED"
 		account.Observability.FailedReason = err.Error()
-		o := mm.Save(&account)
+		o = mm.Save(&account)
 		if o.Err != nil {
 			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return nil, o.Err
@@ -250,28 +261,35 @@ func apply(ctx context.Context, mm *magicmodel.Operator, account types.Account, 
 		return nil, err
 	}
 
+	err = handleWireguardUpdates(mm, *updatedNetwork, cfg)
+	if err != nil {
+		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+		return nil, err
+	}
+
 	return updatedAccount, nil
 }
 
-func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, account types.Account) (*types.Account, error) {
+func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, account types.Account, network types.Network) (*types.Account, *types.Network, error) {
+	// Create Network?
 	var vpcEndpointServiceName string
 	if err := json.Unmarshal(outputs["nlb_vpc_endpoint_service_name"].Value, &vpcEndpointServiceName); err != nil {
-		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_name", err)
+		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_name", err)
 	}
 
 	var vpcEndpointServiceId string
 	if err := json.Unmarshal(outputs["nlb_vpc_endpoint_service_id"].Value, &vpcEndpointServiceId); err != nil {
-		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_id", err)
+		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_id", err)
 	}
 
 	var vpcEndpointServicePrivateDnsName string
 	if err := json.Unmarshal(outputs["nlb_vpc_endpoint_service_private_dns_name"].Value, &vpcEndpointServicePrivateDnsName); err != nil {
-		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_private_dns_name", err)
+		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_private_dns_name", err)
 	}
 
 	var nlbInternalDnsName string
 	if err := json.Unmarshal(outputs["nlb_internal_dns_name"].Value, &nlbInternalDnsName); err != nil {
-		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_internal_dns_name", err)
+		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_internal_dns_name", err)
 	}
 
 	account.Observability.VpcEndpointServiceName = vpcEndpointServiceName
@@ -281,8 +299,114 @@ func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, 
 
 	o := mm.Save(&account)
 	if o.Err != nil {
-		return nil, o.Err
+		return nil, nil, o.Err
 	}
 
-	return &account, nil
+	var wireguardInstanceID string
+	if err := json.Unmarshal(outputs["wireguard_instance_id"].Value, &wireguardInstanceID); err != nil {
+		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_instance_id", err)
+	}
+
+	var wireguardPublicIP string
+	if err := json.Unmarshal(outputs["wireguard_public_ip"].Value, &wireguardPublicIP); err != nil {
+		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_public_ip", err)
+	}
+
+	network.WireguardPublicIP = wireguardPublicIP
+	network.WireguardInstanceID = wireguardInstanceID
+
+	o = mm.Save(&network)
+	if o.Err != nil {
+		return nil, nil, o.Err
+	}
+	return &account, &network, nil
+}
+
+func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsCfg aws.Config) error {
+	// create ssm client
+	client := ssm.NewFromConfig(awsCfg)
+	runInitCommands := false
+	if network.WireguardPublicKey == "" {
+		runInitCommands = true
+		privateKey, err := generateWireGuardKey()
+		if err != nil {
+			return err
+		}
+		publicKey, err := generateWireGuardPublicKey(privateKey)
+		if err != nil {
+			return err
+		}
+
+		network.WireguardPublicKey = strings.TrimSpace(publicKey)
+		network.WireguardPrivateKey = strings.TrimSpace(privateKey)
+
+		o := mm.Save(&network)
+		if o.Err != nil {
+			return o.Err
+		}
+
+		// create parameters in ssm
+		err = types.UpdatePublicPrivateKeyParameters(context.Background(), &publicKey, &privateKey, network.ID, awsCfg)
+		if err != nil {
+			return err
+		}
+	}
+
+	// update parameter in ssm (in case of port or ip range change
+	var clients []types.VpnClient
+	o := mm.All(&clients)
+	if o.Err != nil {
+		return o.Err
+	}
+
+	clientIPPublicKeyMap := make(map[string]string)
+	for _, c := range clients {
+		networkIds := make([]string, 0)
+		for _, n := range c.Networks {
+			networkIds = append(networkIds, n.ID)
+		}
+		if slices.Contains(networkIds, network.ID) {
+			clientIPPublicKeyMap[c.ClientIP] = c.PublicKey
+		}
+	}
+
+	configFile := types.CreateServerConfigFile(network.WireguardIP, network.WireguardPort, network.WireguardPrivateKey, clientIPPublicKeyMap)
+
+	err := types.UpdateServerConfigFileParameter(context.Background(), configFile, network.ID, awsCfg)
+	if err != nil {
+		return err
+	}
+
+	commandId, err := types.RunSSMCommands(context.Background(), runInitCommands, network.WireguardInstanceID, awsCfg, network.ID)
+	if err != nil {
+		return err
+	}
+	time.Sleep(3 * time.Second) // Have to sleep because there is a delay in the invocation
+	err = types.WaitForCommandSuccess(context.Background(), client, *commandId, network.WireguardInstanceID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func generateWireGuardKey() (string, error) {
+	cmd := exec.Command("wg", "genkey")
+	key, err := cmd.Output()
+	if err != nil {
+		fmt.Println("error when generating private key:  ", string(key))
+		return "", err
+	}
+
+	return string(key), nil
+}
+
+func generateWireGuardPublicKey(privateKey string) (string, error) {
+	cmd := exec.Command("wg", "pubkey")
+	cmd.Stdin = strings.NewReader(privateKey)
+	publicKey, err := cmd.Output()
+	if err != nil {
+		fmt.Println("error when generating public key:  ", string(publicKey))
+		return "", err
+	}
+	return string(publicKey), nil
 }
