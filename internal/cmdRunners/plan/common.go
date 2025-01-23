@@ -1,11 +1,11 @@
 package plan
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/DragonOps-io/types"
 	"github.com/rs/zerolog"
 )
 
@@ -32,7 +32,7 @@ func GetPayload() (*Payload, error) {
 	}
 
 	payload := Payload{}
-	err := json.Unmarshal([]byte(val), &payload)
+	err := types.UnmarshalWithErrorDetails([]byte(val), &payload)
 	if err != nil {
 		return nil, err
 	}

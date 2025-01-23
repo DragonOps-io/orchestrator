@@ -2,8 +2,14 @@ package observability
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
 	"github.com/DragonOps-io/types"
@@ -14,12 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"slices"
-	"strings"
-	"time"
 )
 
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
@@ -273,22 +273,22 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, account types.Account, network types.Network) (*types.Account, *types.Network, error) {
 	// Create Network?
 	var vpcEndpointServiceName string
-	if err := json.Unmarshal(outputs["nlb_vpc_endpoint_service_name"].Value, &vpcEndpointServiceName); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["nlb_vpc_endpoint_service_name"].Value, &vpcEndpointServiceName); err != nil {
 		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_name", err)
 	}
 
 	var vpcEndpointServiceId string
-	if err := json.Unmarshal(outputs["nlb_vpc_endpoint_service_id"].Value, &vpcEndpointServiceId); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["nlb_vpc_endpoint_service_id"].Value, &vpcEndpointServiceId); err != nil {
 		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_id", err)
 	}
 
 	var vpcEndpointServicePrivateDnsName string
-	if err := json.Unmarshal(outputs["nlb_vpc_endpoint_service_private_dns_name"].Value, &vpcEndpointServicePrivateDnsName); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["nlb_vpc_endpoint_service_private_dns_name"].Value, &vpcEndpointServicePrivateDnsName); err != nil {
 		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_vpc_endpoint_service_private_dns_name", err)
 	}
 
 	var nlbInternalDnsName string
-	if err := json.Unmarshal(outputs["nlb_internal_dns_name"].Value, &nlbInternalDnsName); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["nlb_internal_dns_name"].Value, &nlbInternalDnsName); err != nil {
 		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_internal_dns_name", err)
 	}
 
@@ -303,12 +303,12 @@ func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, 
 	}
 
 	var wireguardInstanceID string
-	if err := json.Unmarshal(outputs["wireguard_instance_id"].Value, &wireguardInstanceID); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["wireguard_instance_id"].Value, &wireguardInstanceID); err != nil {
 		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_instance_id", err)
 	}
 
 	var wireguardPublicIP string
-	if err := json.Unmarshal(outputs["wireguard_public_ip"].Value, &wireguardPublicIP); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["wireguard_public_ip"].Value, &wireguardPublicIP); err != nil {
 		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_public_ip", err)
 	}
 
