@@ -303,8 +303,8 @@ func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, 
 	account.Observability.NlbInternalDnsName = nlbInternalDnsName
 	account.Observability.GrafanaMetadata = &types.GrafanaMetadata{
 		GrafanaCredentials: types.GrafanaCredentials{
-			creds.Username,
-			creds.Password,
+			Username: creds.Username,
+			Password: creds.Password,
 		},
 	}
 	account.Observability.GrafanaMetadata.Username = creds.Username
