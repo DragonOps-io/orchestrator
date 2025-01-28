@@ -301,7 +301,12 @@ func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, 
 	account.Observability.VpcEndpointServiceId = vpcEndpointServiceId
 	account.Observability.VpcEndpointServicePrivateDns = vpcEndpointServicePrivateDnsName
 	account.Observability.NlbInternalDnsName = nlbInternalDnsName
-	account.Observability.GrafanaMetadata.Password = creds.Password
+	account.Observability.GrafanaMetadata = &types.GrafanaMetadata{
+		GrafanaCredentials: types.GrafanaCredentials{
+			creds.Username,
+			creds.Password,
+		},
+	}
 	account.Observability.GrafanaMetadata.Username = creds.Username
 
 	o := mm.Save(&account)
