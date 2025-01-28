@@ -292,10 +292,17 @@ func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, 
 		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "nlb_internal_dns_name", err)
 	}
 
+	var creds types.GrafanaCredentials
+	if err := types.UnmarshalWithErrorDetails(outputs["grafana_default_creds"].Value, &creds); err != nil {
+		return nil, nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "grafana_default_creds", err)
+	}
+
 	account.Observability.VpcEndpointServiceName = vpcEndpointServiceName
 	account.Observability.VpcEndpointServiceId = vpcEndpointServiceId
 	account.Observability.VpcEndpointServicePrivateDns = vpcEndpointServicePrivateDnsName
 	account.Observability.NlbInternalDnsName = nlbInternalDnsName
+	account.Observability.GrafanaMetadata.Password = creds.Password
+	account.Observability.GrafanaMetadata.Username = creds.Username
 
 	o := mm.Save(&account)
 	if o.Err != nil {
