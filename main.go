@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/DragonOps-io/orchestrator/cmd"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
+	"github.com/DragonOps-io/types"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/bugsnag/bugsnag-go/v2"
 )
@@ -67,7 +67,7 @@ func GetPayloadUsername() (*string, error) {
 	}
 
 	payload := map[string]interface{}{}
-	err := json.Unmarshal([]byte(val), &payload)
+	err := types.UnmarshalWithErrorDetails([]byte(val), &payload)
 	if err != nil {
 		return nil, err
 	}

@@ -2,9 +2,7 @@ package group
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
@@ -459,12 +459,12 @@ func saveCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 
 	for key, output := range outputs {
 		if key == "cluster_credentials" {
-			if err := json.Unmarshal(output.Value, &creds); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &creds); err != nil {
 				return err
 			}
 		}
 		if key == "cluster_metadata" {
-			if err := json.Unmarshal(output.Value, &urls); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &urls); err != nil {
 				return err
 			}
 		}
@@ -496,7 +496,7 @@ func saveEnvironmentAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexe
 	for key, output := range outputs {
 		if key == "alb" {
 			var alb AlbMap
-			if err := json.Unmarshal(output.Value, &alb); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &alb); err != nil {
 				return err
 			}
 			var envs []types.Environment
@@ -523,7 +523,7 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 	for key, output := range outputs {
 		if key == "rds_endpoint" {
 			var endpoint string
-			if err := json.Unmarshal(output.Value, &endpoint); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &endpoint); err != nil {
 				return err
 			}
 			var rds []types.Rds
@@ -545,7 +545,7 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 		if key == "cluster_master_user_secret" {
 			var secretArray []map[string]interface{}
 			var secretArn string
-			if err := json.Unmarshal(output.Value, &secretArray); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &secretArray); err != nil {
 				return err
 			}
 			for _, secret := range secretArray {
@@ -561,7 +561,7 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 				return err
 			}
 			var usernameAndPassword map[string]string
-			err = json.Unmarshal([]byte(*out.SecretString), &usernameAndPassword)
+			err = types.UnmarshalWithErrorDetails([]byte(*out.SecretString), &usernameAndPassword)
 			var rds []types.Rds
 			o := mm.Where(&rds, "Group.ID", groupID)
 			if o.Err != nil {
@@ -589,23 +589,23 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 
 func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, networkResourceLabel string) (*types.Network, error) {
 	var wireguardInstanceID string
-	if err := json.Unmarshal(outputs["wireguard_instance_id"].Value, &wireguardInstanceID); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["wireguard_instance_id"].Value, &wireguardInstanceID); err != nil {
 		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_instance_id", err)
 	}
 
 	var wireguardPublicIP string
-	if err := json.Unmarshal(outputs["wireguard_public_ip"].Value, &wireguardPublicIP); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["wireguard_public_ip"].Value, &wireguardPublicIP); err != nil {
 		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_public_ip", err)
 	}
 
 	var vpcMap map[string]interface{}
-	if err := json.Unmarshal(outputs["vpc"].Value, &vpcMap); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["vpc"].Value, &vpcMap); err != nil {
 		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "vpc", err)
 	}
 
 	vpcEndpointId := ""
 	if value, ok := outputs["vpc_endpoint_id"]; ok {
-		if err := json.Unmarshal(value.Value, &vpcEndpointId); err != nil {
+		if err := types.UnmarshalWithErrorDetails(value.Value, &vpcEndpointId); err != nil {
 			return nil, fmt.Errorf("Error decoding output value for key %s: %s", "vpc_endpoint_id", err)
 		}
 	} else {
@@ -614,7 +614,7 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 
 	vpcEndpointDnsName := ""
 	if value, ok := outputs["vpc_endpoint_dns_name"]; ok {
-		if err := json.Unmarshal(value.Value, &vpcEndpointDnsName); err != nil {
+		if err := types.UnmarshalWithErrorDetails(value.Value, &vpcEndpointDnsName); err != nil {
 			return nil, fmt.Errorf("Error decoding output value for key %s: %s", "vpc_endpoint_dns_name", err)
 		}
 	} else {

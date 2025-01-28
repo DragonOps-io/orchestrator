@@ -2,13 +2,13 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 
+	"github.com/DragonOps-io/types"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
@@ -59,7 +59,7 @@ func IsApiKeyValid(doApiKey string) (*IsValidResponse, error) {
 	}
 
 	response := IsValidResponse{}
-	err = json.Unmarshal(body, &response)
+	err = types.UnmarshalWithErrorDetails(body, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func RetrieveBugsnagApiKey(devKey string, repo string, apiKey string) (*string, 
 	}
 
 	response := ""
-	err = json.Unmarshal(body, &response)
+	err = types.UnmarshalWithErrorDetails(body, &response)
 	if err != nil {
 		return nil, err
 	}
