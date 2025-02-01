@@ -477,8 +477,8 @@ func saveCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	}
 	for _, cluster := range clusters {
 		if cluster.ResourceLabel == clusterResourceLabel {
-			cluster.Metadata.Grafana.GrafanaCredentials = creds.GrafanaCredentials
-			cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.GrafanaUrl}
+			//cluster.Metadata.Grafana.GrafanaCredentials = creds.GrafanaCredentials
+			//cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.GrafanaUrl}
 			cluster.Metadata.ArgoCd.ArgoCdCredentials = creds.ArgoCdCredentials
 			cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.ArgoCdUrl}
 			o = mm.Update(&cluster, "Metadata", cluster.Metadata)
