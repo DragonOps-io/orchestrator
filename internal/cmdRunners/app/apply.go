@@ -249,7 +249,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Running command %s", command))
 		msg, err := utils.RunOSCommandOrFail(command)
 		if err != nil {
-			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v - %v", app.ID, env.ID, err, msg))
 			if ue != nil {
 				return ue
 			}
