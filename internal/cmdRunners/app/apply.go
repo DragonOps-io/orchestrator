@@ -253,7 +253,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			if ue != nil {
 				return ue
 			}
-			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v - %v", app.ID, env.ID, err, msg)
 		}
 		log.Debug().Str("AppID", app.ID).Msg(*msg)
 
