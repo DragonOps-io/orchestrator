@@ -2,8 +2,17 @@ package group
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
 	"github.com/DragonOps-io/types"
@@ -15,13 +24,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/rs/zerolog/log"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"slices"
-	"strings"
-	"sync"
-	"time"
 )
 
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
@@ -32,22 +34,22 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	group := types.Group{}
 	o := mm.Find(&group, payload.GroupID)
 	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", payload.GroupID).Msg("Error finding group")
+		log.Err(o.Err).Str("GroupID", payload.GroupID).Str("JobId", payload.JobId).Msg("Error finding group")
 		return fmt.Errorf("Error when trying to retrieve group with id %s: %s", payload.GroupID, o.Err)
 	}
-	log.Debug().Str("GroupID", group.ID).Msg("Found group")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Found group")
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
 		log.Err(fmt.Errorf("no RECEIPT_HANDLE variable found")).Str("GroupID", group.ID).Msg("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", "No RECEIPT_HANDLE variable found.")
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
@@ -56,35 +58,35 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	var accounts []types.Account
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
+		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", o.Err.Error())
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", aco.Err)
 	}
-	log.Debug().Str("GroupID", group.ID).Msg("Found MasterAccount")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Found MasterAccount")
 
 	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
 		config.WithRegion(accounts[0].AwsRegion)
 		return nil
 	})
 	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
+		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", err.Error())
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return err
@@ -92,15 +94,15 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	// get the doApiKey from secrets manager, not the payload
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
+		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", err.Error())
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return err
@@ -108,15 +110,15 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
+		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", err.Error())
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
@@ -126,12 +128,12 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		log.Err(fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")).Str("GroupID", group.ID).Msg("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 		aco := mm.Update(&group, "Status", "APPLY_FAILED")
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		aco = mm.Update(&group, "FailedReason", "The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Msg(aco.Err.Error())
+			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
 			return aco.Err
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
@@ -144,15 +146,15 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	var groupClusters []types.Cluster
 	o = mm.Where(&groupClusters, "Group.ID", group.ID)
 	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
+		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		po := mm.Update(&group, "Status", "APPLY_FAILED")
 		if po.Err != nil {
-			log.Err(po.Err).Str("GroupID", group.ID).Msg(po.Err.Error())
+			log.Err(po.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(po.Err.Error())
 			return po.Err
 		}
 		po = mm.Update(&group, "FailedReason", o.Err.Error())
 		if po.Err != nil {
-			log.Err(po.Err).Str("GroupID", group.ID).Msg(po.Err.Error())
+			log.Err(po.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(po.Err.Error())
 			return po.Err
 		}
 		return o.Err
@@ -173,79 +175,79 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 
 		var execPath *string
-		log.Debug().Str("GroupID", group.ID).Msg("Preparing Terraform")
+		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Preparing Terraform")
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
+			log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
 			o = mm.Update(&group, "Status", "APPLY_FAILED")
 			if o.Err != nil {
-				log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
+				log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 				return o.Err
 			}
 			o = mm.Update(&group, "FailedReason", err.Error())
 			if o.Err != nil {
-				log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
+				log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 				return o.Err
 			}
 			return err
 		}
 
-		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
-		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, cfg)
+		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
+		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, group, execPath, roleToAssume, cfg, payload, accounts[0])
 		if err != nil {
-			log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
+			log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
 			o = mm.Update(&group, "Status", "APPLY_FAILED")
 			if o.Err != nil {
-				log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
+				log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 				return o.Err
 			}
 			o = mm.Update(&group, "FailedReason", err.Error())
 			if o.Err != nil {
-				log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
+				log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 				return o.Err
 			}
 			return err
 		}
 	}
 
-	log.Debug().Str("GroupID", group.ID).Msg("Updating group status")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Updating group status")
 	o = mm.Update(&group, "Status", "APPLIED")
 	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
+		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return o.Err
 	}
 	o = mm.Update(&group, "FailedReason", "")
 	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Msg(o.Err.Error())
+		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return o.Err
 	}
 
-	log.Debug().Str("GroupID", group.ID).Msg("Finished applying group!")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Finished applying group!")
 	queueParts := strings.Split(group.Account.GroupSqsArn, ":")
 	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
 
-	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
 
 	_, err = sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      &queueUrl,
 		ReceiptHandle: &receiptHandle,
 	})
 	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Msg(err.Error())
+		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
 		return err
 	}
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config) error {
-	log.Debug().Str("GroupID", group.ID).Msg("Templating Terraform with correct values")
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config, payload Payload, masterAccount types.Account) error {
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Templating Terraform with correct values")
 
 	command := fmt.Sprintf("/app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
 	if os.Getenv("IS_LOCAL") == "true" {
 		command = fmt.Sprintf("./app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
 	}
 
-	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Running command %s", command))
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Running command %s", command))
 	msg, err := utils.RunOSCommandOrFail(command)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
@@ -259,10 +261,10 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		return fmt.Errorf("Error running `worker group apply` for group with id %s: %s: %s", group.ID, err, *msg)
 	}
 
-	log.Debug().Str("GroupID", group.ID).Msg("Applying group Terraform")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Applying group Terraform")
 	// can't use a for loop because we need to do it in order
 	// apply networks all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "network", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "network", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -276,7 +278,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply clusters all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -290,7 +292,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply cluster grafana all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "cluster_grafana", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -304,7 +306,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -318,7 +320,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply static environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "environment-static", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -332,7 +334,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	}
 
 	// apply environments all together
-	err = apply(ctx, mm, group, execPath, roleToAssume, "rds", cfg)
+	err = apply(ctx, mm, group, execPath, roleToAssume, "rds", cfg, payload, masterAccount)
 	if err != nil {
 		o := mm.Update(&group, "Status", "APPLY_FAILED")
 		if o.Err != nil {
@@ -347,10 +349,10 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	return nil
 }
 
-func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config) error {
+func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, cfg aws.Config, payload Payload, masterAccount types.Account) error {
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
-	log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying all %ss", dirName))
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying all %ss", dirName))
 
 	// go routine setup stuff
 	wg := &sync.WaitGroup{}
@@ -359,13 +361,13 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 	// run all the applies in parallel in each folder
 	for _, d := range directories {
 		wg.Add(1)
-		log.Debug().Str("GroupID", group.ID).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
+		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying %s %s", dirName, d.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
 
 		go func(dir os.DirEntry) {
 			defer wg.Done()
 			// apply terraform or return an error
-			log.Debug().Str("GroupID", group.ID).Msg(path)
+			log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(path)
 			out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
@@ -380,6 +382,15 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 					errors <- fmt.Errorf("error saving outputs for %s %s: %v", dirName, dir.Name(), err)
 					return
 				}
+
+				// TODO currently handled in terraform
+				//if masterAccount.Observability != nil && masterAccount.Observability.Enabled && network.VpcEndpointId != "" {
+				//	err = handleVpcConnectionsForObservability(ctx, *network, cfg, masterAccount)
+				//	if err != nil {
+				//		errors <- fmt.Errorf("error updating wireguard for %s %s: %v", dirName, dir.Name(), err)
+				//		return
+				//	}
+				//}
 
 				err = handleWireguardUpdates(mm, *network, cfg)
 				if err != nil {
@@ -448,12 +459,12 @@ func saveCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 
 	for key, output := range outputs {
 		if key == "cluster_credentials" {
-			if err := json.Unmarshal(output.Value, &creds); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &creds); err != nil {
 				return err
 			}
 		}
 		if key == "cluster_metadata" {
-			if err := json.Unmarshal(output.Value, &urls); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &urls); err != nil {
 				return err
 			}
 		}
@@ -466,8 +477,8 @@ func saveCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	}
 	for _, cluster := range clusters {
 		if cluster.ResourceLabel == clusterResourceLabel {
-			cluster.Metadata.Grafana.GrafanaCredentials = creds.GrafanaCredentials
-			cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.GrafanaUrl}
+			//cluster.Metadata.Grafana.GrafanaCredentials = creds.GrafanaCredentials
+			//cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.GrafanaUrl}
 			cluster.Metadata.ArgoCd.ArgoCdCredentials = creds.ArgoCdCredentials
 			cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.ArgoCdUrl}
 			o = mm.Update(&cluster, "Metadata", cluster.Metadata)
@@ -485,7 +496,7 @@ func saveEnvironmentAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexe
 	for key, output := range outputs {
 		if key == "alb" {
 			var alb AlbMap
-			if err := json.Unmarshal(output.Value, &alb); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &alb); err != nil {
 				return err
 			}
 			var envs []types.Environment
@@ -512,7 +523,7 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 	for key, output := range outputs {
 		if key == "rds_endpoint" {
 			var endpoint string
-			if err := json.Unmarshal(output.Value, &endpoint); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &endpoint); err != nil {
 				return err
 			}
 			var rds []types.Rds
@@ -534,7 +545,7 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 		if key == "cluster_master_user_secret" {
 			var secretArray []map[string]interface{}
 			var secretArn string
-			if err := json.Unmarshal(output.Value, &secretArray); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &secretArray); err != nil {
 				return err
 			}
 			for _, secret := range secretArray {
@@ -550,7 +561,7 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 				return err
 			}
 			var usernameAndPassword map[string]string
-			err = json.Unmarshal([]byte(*out.SecretString), &usernameAndPassword)
+			err = types.UnmarshalWithErrorDetails([]byte(*out.SecretString), &usernameAndPassword)
 			var rds []types.Rds
 			o := mm.Where(&rds, "Group.ID", groupID)
 			if o.Err != nil {
@@ -578,18 +589,36 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 
 func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, networkResourceLabel string) (*types.Network, error) {
 	var wireguardInstanceID string
-	if err := json.Unmarshal(outputs["wireguard_instance_id"].Value, &wireguardInstanceID); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["wireguard_instance_id"].Value, &wireguardInstanceID); err != nil {
 		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_instance_id", err)
 	}
 
 	var wireguardPublicIP string
-	if err := json.Unmarshal(outputs["wireguard_public_ip"].Value, &wireguardPublicIP); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["wireguard_public_ip"].Value, &wireguardPublicIP); err != nil {
 		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "wireguard_public_ip", err)
 	}
 
 	var vpcMap map[string]interface{}
-	if err := json.Unmarshal(outputs["vpc"].Value, &vpcMap); err != nil {
+	if err := types.UnmarshalWithErrorDetails(outputs["vpc"].Value, &vpcMap); err != nil {
 		return nil, fmt.Errorf("Error decoding output value for key %s: %s\n", "vpc", err)
+	}
+
+	vpcEndpointId := ""
+	if value, ok := outputs["vpc_endpoint_id"]; ok {
+		if err := types.UnmarshalWithErrorDetails(value.Value, &vpcEndpointId); err != nil {
+			return nil, fmt.Errorf("Error decoding output value for key %s: %s", "vpc_endpoint_id", err)
+		}
+	} else {
+		log.Info().Str("GroupID", groupID).Msg("vpc_endpoint_id not found in outputs")
+	}
+
+	vpcEndpointDnsName := ""
+	if value, ok := outputs["vpc_endpoint_dns_name"]; ok {
+		if err := types.UnmarshalWithErrorDetails(value.Value, &vpcEndpointDnsName); err != nil {
+			return nil, fmt.Errorf("Error decoding output value for key %s: %s", "vpc_endpoint_dns_name", err)
+		}
+	} else {
+		log.Info().Str("GroupID", groupID).Msg("vpc_endpoint_id not found in outputs")
 	}
 
 	var networks []types.Network
@@ -604,6 +633,8 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	network.VpcID = vpcMap["vpc_id"].(string)
 	network.WireguardInstanceID = wireguardInstanceID
 	network.WireguardPublicIP = wireguardPublicIP
+	network.VpcEndpointId = vpcEndpointId
+	network.VpcEndpointDnsName = vpcEndpointDnsName
 
 	o = mm.Save(&network)
 	if o.Err != nil {
@@ -612,6 +643,21 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 
 	return &network, nil
 }
+
+// TODO THis is currently in terraform but not sure if we need it here or not currently.
+//func handleVpcConnectionsForObservability(ctx context.Context, network types.Network, awsCfg aws.Config, masterAccount types.Account) error {
+//	client := ec2.NewFromConfig(awsCfg)
+//	err := acceptPendingConnections(ctx, client, masterAccount.Observability.VpcEndpointServiceId, network.VpcEndpointId)
+//	if err != nil {
+//		var apiErr smithy.APIError
+//		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "InvalidState" {
+//			log.Info().Str("GroupID", network.Group.ID).Msg("Ignoring InvalidState error")
+//			return nil
+//		}
+//		return fmt.Errorf("failed to accept connection: %w", err)
+//	}
+//	return nil
+//}
 
 func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsCfg aws.Config) error {
 	// create ssm client
@@ -627,6 +673,7 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 		if err != nil {
 			return err
 		}
+
 		network.WireguardPublicKey = strings.TrimSpace(publicKey)
 		network.WireguardPrivateKey = strings.TrimSpace(privateKey)
 
@@ -713,4 +760,13 @@ type AlbMap struct {
 	SecurityGroupId  string                 `json:"security_group_id"`
 	TargetGroups     map[string]interface{} `json:"target_groups"`
 	ZoneId           string                 `json:"zone_id"`
+}
+
+func acceptPendingConnections(ctx context.Context, client *ec2.Client, serviceID string, endpointId string) error {
+	// Accept VPC endpoint connections
+	_, err := client.AcceptVpcEndpointConnections(ctx, &ec2.AcceptVpcEndpointConnectionsInput{
+		ServiceId:      aws.String(serviceID),
+		VpcEndpointIds: []string{endpointId},
+	})
+	return err
 }

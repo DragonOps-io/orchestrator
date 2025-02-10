@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/DragonOps-io/orchestrator/internal/cmdRunners/app"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"os"
 )
 
 func newAppCommand() *cobra.Command {
@@ -38,7 +39,7 @@ func newAppApplyCmd() *cobra.Command {
 				os.Exit(1)
 			}
 			isDryRun, err := cmd.Flags().GetBool("dry-run")
-			log.Debug().Str("ApplyApp", "isDryRunValue").Msg(fmt.Sprintf("%v", isDryRun))
+			log.Debug().Str("ApplyApp", "isDryRunValue").Str("JobId", payload.JobId).Msg(fmt.Sprintf("%v", isDryRun))
 
 			err = app.Apply(cmd.Context(), *payload, mm, isDryRun)
 			if err != nil {

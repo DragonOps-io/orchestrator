@@ -2,14 +2,15 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+
+	"github.com/DragonOps-io/types"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
 func RunOSCommandOrFail(command string) (*string, error) {
@@ -58,7 +59,39 @@ func IsApiKeyValid(doApiKey string) (*IsValidResponse, error) {
 	}
 
 	response := IsValidResponse{}
-	err = json.Unmarshal(body, &response)
+	err = types.UnmarshalWithErrorDetails(body, &response)
+	if err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+func RetrieveBugsnagApiKey(devKey string, repo string, apiKey string) (*string, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/bugsnag", os.Getenv("DRAGONOPS_API")), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("do-developer-key", devKey)
+	req.Header.Add("do-repo", "bugsnagOrchestratorKey")
+	req.Header.Add("do-api-key", apiKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("error occurred: %s; detail: %s", resp.Status, body)
+	}
+
+	response := ""
+	err = types.UnmarshalWithErrorDetails(body, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +100,10 @@ func IsApiKeyValid(doApiKey string) (*IsValidResponse, error) {
 
 func GetDoApiKeyFromSecretsManager(ctx context.Context, cfg aws.Config, userName string) (*string, error) {
 	smClient := secretsmanager.NewFromConfig(cfg)
+
+	secretName := fmt.Sprintf("do-api-key/%s", userName)
 	resp, err := smClient.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(fmt.Sprintf("do-api-key/%s", userName)),
+		SecretId: &secretName,
 	})
 	if err != nil {
 		return nil, err
