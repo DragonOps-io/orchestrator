@@ -316,7 +316,17 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 					}
 
 					if app.SubType == "server" {
-						err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, env.AlbDnsName, awsCfg, ctx, albZoneMap[env.Group.Account.Region], mm)
+						// get the cluster the environment belongs to and that's the alb name
+						var cluster types.Cluster
+						o := mm.Find(&cluster, env.Cluster.ID)
+						if o.Err != nil {
+							ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, o.Err)
+							if ue != nil {
+								return ue
+							}
+							return fmt.Errorf("Error finding cluster with id %s: %v", env.Cluster.ID, o.Err)
+						}
+						err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, cluster.AlbDnsName, awsCfg, ctx, albZoneMap[env.Group.Account.Region], mm)
 						if err != nil {
 							ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
 							if ue != nil {
