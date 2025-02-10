@@ -51,6 +51,12 @@ jobs:
           private-key: ${{ secrets.PRIVATE_SSH_KEY_TYPES_REPO }}
           private-key-name: github-ppk
 
+      - name: Go Build
+        run: |
+          go env -w GOPRIVATE=github.com/DragonOps-io/*
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.bugSnagDevKey=${{ secrets.BUGSNAG_DEV_KEY}}" -o .
+
       - name: Get latest tag
         id: gettag
         run: |
