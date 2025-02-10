@@ -400,6 +400,14 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 
 			}
 
+			if dirName == "cluster" {
+				err = saveClusterAlbDnsName(mm, out, group.ID, dir.Name())
+				if err != nil {
+					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+					return
+				}
+			}
+
 			// handle output for grafana credentials
 			if dirName == "cluster_grafana" {
 				err = saveCredsToCluster(mm, out, group.ID, dir.Name())
@@ -409,13 +417,13 @@ func apply(ctx context.Context, mm *magicmodel.Operator, group types.Group, exec
 				}
 			}
 			// handle output for alb dns name for environment
-			if dirName == "environment" {
-				err = saveEnvironmentAlbDnsName(mm, out, group.ID, dir.Name())
-				if err != nil {
-					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
-					return
-				}
-			}
+			//if dirName == "environment" {
+			//	err = saveEnvironmentAlbDnsName(mm, out, group.ID, dir.Name())
+			//	if err != nil {
+			//		errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+			//		return
+			//	}
+			//}
 			// handle output for rds endpoint for environment
 			if dirName == "rds" {
 				err = saveRdsEndpointAndSecret(mm, out, group.ID, dir.Name(), cfg)
@@ -492,19 +500,19 @@ func saveCredsToCluster(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 	return nil
 }
 
-func saveEnvironmentAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, envResourceLabel string) error {
+func saveClusterAlbDnsName(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, envResourceLabel string) error {
 	for key, output := range outputs {
 		if key == "alb" {
 			var alb AlbMap
 			if err := types.UnmarshalWithErrorDetails(output.Value, &alb); err != nil {
 				return err
 			}
-			var envs []types.Environment
-			o := mm.Where(&envs, "Group.ID", groupID)
+			var clusters []types.Cluster
+			o := mm.WhereV2(false, &clusters, "Group.ID", groupID)
 			if o.Err != nil {
 				return o.Err
 			}
-			for _, e := range envs {
+			for _, e := range clusters {
 				if e.ResourceLabel == envResourceLabel {
 					e.AlbDnsName = alb.DnsName
 					o = mm.Update(&e, "AlbDnsName", alb.DnsName)
