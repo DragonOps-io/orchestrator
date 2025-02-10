@@ -249,11 +249,11 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Running command %s", command))
 		msg, err := utils.RunOSCommandOrFail(command)
 		if err != nil {
-			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v - %v", app.ID, env.ID, err, msg))
 			if ue != nil {
 				return ue
 			}
-			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v - %v", app.ID, env.ID, err, msg)
 		}
 		log.Debug().Str("AppID", app.ID).Msg(*msg)
 
@@ -305,25 +305,31 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 					}
 				} else {
 					// handle the dashboard outputs
-					var redUrl string
-					if err = json.Unmarshal(out["app_red_dashboard_url"].Value, &redUrl); err != nil {
-						fmt.Printf("Error decoding output value for key %s: %s\n", "app_red_dashboard_url", err)
+					var appDashboardUrl string
+					if err = json.Unmarshal(out["app_dashboard_url"].Value, &appDashboardUrl); err != nil {
+						fmt.Printf("Error decoding output value for key %s: %s\n", "app_dashboard_url", err)
 					}
 
-					var useUrl string
-					if err = json.Unmarshal(out["app_use_dashboard_url"].Value, &useUrl); err != nil {
-						fmt.Printf("Error decoding output value for key %s: %s\n", "app_use_dashboard_url", err)
-					}
-
-					var logsUrl string
-					if err = json.Unmarshal(out["app_loki_url"].Value, &logsUrl); err != nil {
-						fmt.Printf("Error decoding output value for key %s: %s\n", "app_loki_url", err)
-					}
+					//var redUrl string
+					//if err = json.Unmarshal(out["app_red_dashboard_url"].Value, &redUrl); err != nil {
+					//	fmt.Printf("Error decoding output value for key %s: %s\n", "app_red_dashboard_url", err)
+					//}
+					//
+					//var useUrl string
+					//if err = json.Unmarshal(out["app_use_dashboard_url"].Value, &useUrl); err != nil {
+					//	fmt.Printf("Error decoding output value for key %s: %s\n", "app_use_dashboard_url", err)
+					//}
+					//
+					//var logsUrl string
+					//if err = json.Unmarshal(out["app_loki_url"].Value, &logsUrl); err != nil {
+					//	fmt.Printf("Error decoding output value for key %s: %s\n", "app_loki_url", err)
+					//}
 					// need to get the unique id for loki datasource from cluster
 					app.Environments[idx].ObservabilityUrls = &types.ObservabilityUrls{
-						Logs:       logsUrl,
-						REDMetrics: redUrl,
-						UseMetrics: useUrl,
+						//Logs:             logsUrl,
+						//REDMetrics:       redUrl,
+						//UseMetrics:       useUrl,
+						UnifiedDashboard: appDashboardUrl,
 					}
 					if app.SubType == "server" {
 						err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, env.AlbDnsName, awsCfg, ctx, albZoneMap[env.Group.Account.Region], mm)

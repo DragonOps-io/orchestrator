@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/DragonOps-io/orchestrator/internal/cmdRunners/group"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"os"
 )
 
 func newGroupCmd() *cobra.Command {
@@ -26,7 +27,6 @@ func newGroupApplyCmd() *cobra.Command {
 		Short: "Apply a group stack",
 		Run: func(cmd *cobra.Command, args []string) {
 			isDryRun, _ := cmd.Flags().GetBool("dry-run")
-
 			payload, err := group.GetPayload()
 			if err != nil {
 				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))

@@ -1,4 +1,4 @@
-package group
+package observability
 
 import (
 	"fmt"
@@ -14,7 +14,6 @@ func init() {
 }
 
 type Payload struct {
-	GroupID  string `json:"group_id"`
 	JobId    string `json:"job_id"`
 	JobName  string `json:"job_name"`
 	Region   string `json:"region"`
