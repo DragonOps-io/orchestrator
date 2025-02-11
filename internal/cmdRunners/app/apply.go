@@ -296,7 +296,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 					}
 					app.Environments[idx].CloudfrontDistroID = string(cfDistroID)
 
-					err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, cfDnsName, awsCfg, ctx, "Z2FDTNDATAQYW2", mm)
+					err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, cfDnsName, awsCfg, ctx, "Z2FDTNDATAQYW2", app.ID)
 					if err != nil {
 						ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
 						if ue != nil {
@@ -326,12 +326,13 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 							}
 							return fmt.Errorf("Error finding cluster with id %s: %v", env.Cluster.ID, o.Err)
 						}
-						err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, cluster.AlbDnsName, awsCfg, ctx, albZoneMap[env.Group.Account.Region], mm)
+						err = handleRoute53Domains(app.Environments[idx].Route53DomainNames, cluster.AlbDnsName, awsCfg, ctx, albZoneMap[env.Group.Account.Region], app.ID)
 						if err != nil {
 							ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
 							if ue != nil {
 								return ue
 							}
+							return fmt.Errorf("Error handling route53 domains for app with id %s and environment with id %s: %v", app.ID, env.ID, err)
 						}
 					}
 				}
@@ -347,7 +348,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	return nil
 }
 
-func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string, awsCfg *aws.Config, ctx context.Context, cfOrAlbZoneId string, mm *magicmodel.Operator) error {
+func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string, awsCfg *aws.Config, ctx context.Context, cfOrAlbZoneId string, appId string) error {
 	for di := range r53Domains {
 		// TODO when we support multi-account come back to this
 		//if r53Domains[di].AwsAccountId != nil {
@@ -409,11 +410,21 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string,
 		if foundRecord != nil {
 			// update the record but only if overwrite is true
 			if r53Domains[di].Overwrite != nil && *r53Domains[di].Overwrite {
-				foundRecord.Type = r53Types.RRTypeA
-				foundRecord.AliasTarget = &r53Types.AliasTarget{
-					DNSName:      &cfDnsName,
-					HostedZoneId: &cfOrAlbZoneId,
+				if foundRecord.Type == r53Types.RRTypeA {
+					foundRecord.AliasTarget = &r53Types.AliasTarget{
+						DNSName:      &cfDnsName,
+						HostedZoneId: &cfOrAlbZoneId,
+					}
+				} else if foundRecord.Type == r53Types.RRTypeCname {
+					foundRecord.ResourceRecords = []r53Types.ResourceRecord{
+						{
+							Value: &cfDnsName,
+						},
+					}
+				} else {
+					log.Err(fmt.Errorf("The route53 record found is not one of A or CNAME. Cannot continue with overwrite.")).Str("AppID", appId).Msg("Unsupported record type")
 				}
+
 				_, err = dnsClient.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
 					ChangeBatch: &r53Types.ChangeBatch{
 						Changes: []r53Types.Change{
@@ -426,6 +437,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string,
 					HostedZoneId: r53Domains[di].HostedZoneId,
 				})
 				if err != nil {
+					log.Err(err).Str("AppID", appId).Msg(err.Error())
 					return err
 				}
 			}
@@ -449,6 +461,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string,
 				HostedZoneId: r53Domains[di].HostedZoneId,
 			})
 			if err != nil {
+				log.Err(err).Str("AppID", appId).Msg(err.Error())
 				return err
 			}
 		}
