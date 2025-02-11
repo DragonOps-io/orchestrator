@@ -261,9 +261,9 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 		return nil, err
 	}
 
-	err = handleWireguardUpdates(mm, *updatedNetwork, cfg)
+	err = handleWireguardUpdates(mm, *updatedNetwork, cfg, payload.JobId)
 	if err != nil {
-		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+		log.Err(o.Err).Str("JobId", payload.JobId).Msg(err.Error())
 		return nil, err
 	}
 
@@ -306,6 +306,9 @@ func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, 
 			Username: creds.Username,
 			Password: creds.Password,
 		},
+		EndpointMetadata: types.EndpointMetadata{
+			RootDomain: fmt.Sprintf("%s:3000", nlbInternalDnsName),
+		},
 	}
 	account.Observability.GrafanaMetadata.Username = creds.Username
 
@@ -334,7 +337,7 @@ func saveOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, 
 	return &account, &network, nil
 }
 
-func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsCfg aws.Config) error {
+func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsCfg aws.Config, jobId string) error {
 	// create ssm client
 	client := ssm.NewFromConfig(awsCfg)
 	runInitCommands := false
@@ -388,7 +391,7 @@ func handleWireguardUpdates(mm *magicmodel.Operator, network types.Network, awsC
 	if err != nil {
 		return err
 	}
-
+	log.Debug().Str("JobId", jobId).Msg("Updated server config file. Running VPN commands now.")
 	commandId, err := types.RunSSMCommands(context.Background(), runInitCommands, network.WireguardInstanceID, awsCfg, network.ID)
 	if err != nil {
 		return err
