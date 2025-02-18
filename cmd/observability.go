@@ -17,7 +17,7 @@ func newObservabilityCmd() *cobra.Command {
 		Short: "Interact with observability",
 	}
 	cmmd.AddCommand(newObservabilityApplyCmd())
-	//environmentCmd.AddCommand(newGroupDestroyCmd())
+	cmmd.AddCommand(newObservabilityDestroyCmd())
 	return cmmd
 }
 
@@ -49,31 +49,31 @@ func newObservabilityApplyCmd() *cobra.Command {
 	return cmd
 }
 
-//func newGroupDestroyCmd() *cobra.Command {
-//	cmd := &cobra.Command{
-//		Use:   "destroy",
-//		Short: "Destroy a group stack",
-//		Run: func(cmd *cobra.Command, args []string) {
-//			isDryRun, _ := cmd.Flags().GetBool("dry-run")
-//
-//			payload, err := group.GetPayload()
-//			if err != nil {
-//				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
-//				os.Exit(1)
-//			}
-//
-//			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
-//			if err != nil {
-//				log.Error().Str("InstantiateMagicModelOperator", "DestroyGroup").Msg(fmt.Sprintf("Encountered an err: %s", err))
-//				os.Exit(1)
-//			}
-//
-//			err = group.Destroy(cmd.Context(), *payload, mm, isDryRun)
-//			if err != nil {
-//				log.Error().Str("DestroyGroup", err.Error()).Msg(fmt.Sprintf("Encountered an err with removing group with id %s: %s", payload.GroupID, err))
-//				os.Exit(1)
-//			}
-//		},
-//	}
-//	return cmd
-//}
+func newObservabilityDestroyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "destroy",
+		Short: "Destroy an observability stack",
+		Run: func(cmd *cobra.Command, args []string) {
+			isDryRun, _ := cmd.Flags().GetBool("dry-run")
+
+			payload, err := observability.GetPayload()
+			if err != nil {
+				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
+				os.Exit(1)
+			}
+
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			if err != nil {
+				log.Error().Str("InstantiateMagicModelOperator", "DestroyObservability").Msg(fmt.Sprintf("Encountered an err: %s", err))
+				os.Exit(1)
+			}
+
+			err = observability.Destroy(cmd.Context(), *payload, mm, isDryRun)
+			if err != nil {
+				log.Error().Str("DestroyObservability", err.Error()).Msg(fmt.Sprintf("Encountered an err with removing observability stack with id: %s", err.Error()))
+				os.Exit(1)
+			}
+		},
+	}
+	return cmd
+}
