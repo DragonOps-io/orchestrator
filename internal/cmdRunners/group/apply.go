@@ -436,8 +436,8 @@ func destroyAllNetworks(ctx context.Context, mm *magicmodel.Operator, group type
 					},
 				})
 				if err != nil {
-					errors <- fmt.Errorf("error deleting config parameter for network %s: %s", networks[0].ResourceLabel, err.Error())
-					return
+					log.Warn().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Error deleting config files for network %s: %s", networks[0].ResourceLabel, err.Error()))
+					err = nil
 				}
 
 				var clients []types.VpnClient
