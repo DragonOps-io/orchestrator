@@ -413,7 +413,7 @@ func destroyAllNetworks(ctx context.Context, mm *magicmodel.Operator, group type
 				return
 			}
 			if networks[0].MarkedForDeletion != nil && *networks[0].MarkedForDeletion {
-				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, d.Name()))
+				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, dir.Name()))
 				// run terraform destroy and delete network
 				_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
 				if err != nil {
@@ -454,37 +454,47 @@ func destroyAllNetworks(ctx context.Context, mm *magicmodel.Operator, group type
 					return
 				}
 				return
-			} else {
-				resourcesToApplyChannel <- NetworkToApply{
-					Network:  networks[0],
-					DirEntry: d,
-				}
+			}
+			select {
+			case resourcesToApplyChannel <- NetworkToApply{
+				Network:  networks[0],
+				DirEntry: d,
+			}:
+			default:
 			}
 		}(d)
 	}
 
+	// **Ensure the channels are closed after all goroutines finish**
 	go func() {
 		wg.Wait()
 		close(errors)
 		close(resourcesToApplyChannel)
 	}()
 
-	// Collect errors
+	// **Wait for channel processing**
+	var channelWg sync.WaitGroup
 	var errs []error
+	var directoriesToApply []NetworkToApply
+
+	channelWg.Add(2)
+
 	go func() {
+		defer channelWg.Done()
 		for err := range errors {
 			errs = append(errs, err)
 		}
 	}()
 
-	// Collect directories to apply
-	var directoriesToApply []NetworkToApply
 	go func() {
+		defer channelWg.Done()
 		for nd := range resourcesToApplyChannel {
 			directoriesToApply = append(directoriesToApply, nd)
 		}
 	}()
-	wg.Wait()
+
+	// **Wait for both goroutine results before returning**
+	channelWg.Wait()
 
 	if len(errs) > 0 {
 		err := fmt.Errorf("errors occurred while destroying networks in group %s: %v", group.ResourceLabel, errs)
@@ -521,7 +531,7 @@ func destroyAllClusters(ctx context.Context, mm *magicmodel.Operator, group type
 			}
 
 			if clusters[0].MarkedForDeletion != nil && *clusters[0].MarkedForDeletion {
-				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, d.Name()))
+				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, dir.Name()))
 				// run terraform destroy and delete network
 				_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
 				if err != nil {
@@ -535,36 +545,42 @@ func destroyAllClusters(ctx context.Context, mm *magicmodel.Operator, group type
 				}
 				return
 			}
-			resourcesToApplyChannel <- ClusterToApply{
-				Cluster:  clusters[0],
-				DirEntry: d,
+			select {
+			case resourcesToApplyChannel <- ClusterToApply{Cluster: clusters[0], DirEntry: d}:
+			default:
 			}
-			return
 		}(d)
 	}
-
+	// **Ensure the channels are closed after all goroutines finish**
 	go func() {
 		wg.Wait()
 		close(errors)
 		close(resourcesToApplyChannel)
 	}()
 
-	// Collect errors
+	// **Wait for channel processing**
+	var channelWg sync.WaitGroup
 	var errs []error
+	var directoriesToApply []ClusterToApply
+
+	channelWg.Add(2)
+
 	go func() {
+		defer channelWg.Done()
 		for err := range errors {
 			errs = append(errs, err)
 		}
 	}()
 
-	// Collect directories to apply
-	var directoriesToApply []ClusterToApply
 	go func() {
+		defer channelWg.Done()
 		for nd := range resourcesToApplyChannel {
 			directoriesToApply = append(directoriesToApply, nd)
 		}
 	}()
-	wg.Wait()
+
+	// **Wait for both goroutine results before returning**
+	channelWg.Wait()
 
 	if len(errs) > 0 {
 		err := fmt.Errorf("errors occurred while destroying clusters in group %s: %v", group.ResourceLabel, errs)
@@ -601,7 +617,7 @@ func destroyAllClusterGrafanas(ctx context.Context, mm *magicmodel.Operator, gro
 			}
 
 			if clusters[0].MarkedForDeletion != nil && *clusters[0].MarkedForDeletion {
-				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, d.Name()))
+				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, dir.Name()))
 				// run terraform destroy and delete network
 				_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
 				if err != nil {
@@ -609,37 +625,47 @@ func destroyAllClusterGrafanas(ctx context.Context, mm *magicmodel.Operator, gro
 					return
 				}
 				return
-			} else {
-				resourcesToApplyChannel <- ClusterToApply{
-					Cluster:  clusters[0],
-					DirEntry: d,
-				}
+			}
+			select {
+			case resourcesToApplyChannel <- ClusterToApply{
+				Cluster:  clusters[0],
+				DirEntry: d,
+			}:
+			default:
 			}
 		}(d)
 	}
 
+	// **Ensure the channels are closed after all goroutines finish**
 	go func() {
 		wg.Wait()
 		close(errors)
 		close(resourcesToApplyChannel)
 	}()
 
-	// Collect errors
+	// **Wait for channel processing**
+	var channelWg sync.WaitGroup
 	var errs []error
+	var directoriesToApply []ClusterToApply
+
+	channelWg.Add(2)
+
 	go func() {
+		defer channelWg.Done()
 		for err := range errors {
 			errs = append(errs, err)
 		}
 	}()
 
-	// Collect directories to apply
-	var directoriesToApply []ClusterToApply
 	go func() {
+		defer channelWg.Done()
 		for nd := range resourcesToApplyChannel {
 			directoriesToApply = append(directoriesToApply, nd)
 		}
 	}()
-	wg.Wait()
+
+	// **Wait for both goroutine results before returning**
+	channelWg.Wait()
 
 	if len(errs) > 0 {
 		err := fmt.Errorf("errors occurred while destroying clusters in group %s: %v", group.ResourceLabel, errs)
@@ -677,7 +703,7 @@ func destroyAllEnvironments(ctx context.Context, mm *magicmodel.Operator, group 
 
 			if envs[0].MarkedForDeletion != nil && *envs[0].MarkedForDeletion {
 				// run terraform destroy and delete network
-				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, d.Name()))
+				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, dir.Name()))
 				_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
 				if err != nil {
 					errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
@@ -690,36 +716,46 @@ func destroyAllEnvironments(ctx context.Context, mm *magicmodel.Operator, group 
 				}
 				return
 			}
-			resourcesToApplyChannel <- EnvironmentToApply{
+			select {
+			case resourcesToApplyChannel <- EnvironmentToApply{
 				Environment: envs[0],
 				DirEntry:    d,
+			}:
+			default:
 			}
-			return
 		}(d)
 	}
 
+	// **Ensure the channels are closed after all goroutines finish**
 	go func() {
 		wg.Wait()
 		close(errors)
 		close(resourcesToApplyChannel)
 	}()
 
-	// Collect errors
+	// **Wait for channel processing**
+	var channelWg sync.WaitGroup
 	var errs []error
+	var directoriesToApply []EnvironmentToApply
+
+	channelWg.Add(2)
+
 	go func() {
+		defer channelWg.Done()
 		for err := range errors {
 			errs = append(errs, err)
 		}
 	}()
 
-	// Collect directories to apply
-	var directoriesToApply []EnvironmentToApply
 	go func() {
+		defer channelWg.Done()
 		for nd := range resourcesToApplyChannel {
 			directoriesToApply = append(directoriesToApply, nd)
 		}
 	}()
-	wg.Wait()
+
+	// **Wait for both goroutine results before returning**
+	channelWg.Wait()
 
 	if len(errs) > 0 {
 		err := fmt.Errorf("errors occurred while destroying environments in group %s: %v", group.ResourceLabel, errs)
@@ -754,7 +790,7 @@ func destroyAllRds(ctx context.Context, mm *magicmodel.Operator, group types.Gro
 			}
 
 			if r[0].MarkedForDeletion != nil && *r[0].MarkedForDeletion {
-				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, d.Name()))
+				log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Removing %s %s", dirName, dir.Name()))
 				// run terraform destroy and delete network
 				_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
 				if err != nil {
@@ -767,36 +803,46 @@ func destroyAllRds(ctx context.Context, mm *magicmodel.Operator, group types.Gro
 					return
 				}
 				return
-			} else {
-				resourcesToApplyChannel <- RdsToApply{
-					Rds:      r[0],
-					DirEntry: d,
-				}
+			}
+			select {
+			case resourcesToApplyChannel <- RdsToApply{
+				Rds:      r[0],
+				DirEntry: d,
+			}:
+			default:
 			}
 		}(d)
 	}
+	// **Ensure the channels are closed after all goroutines finish**
 	go func() {
 		wg.Wait()
 		close(errors)
 		close(resourcesToApplyChannel)
 	}()
 
-	// Collect errors
+	// **Wait for channel processing**
+	var channelWg sync.WaitGroup
 	var errs []error
+	var directoriesToApply []RdsToApply
+
+	channelWg.Add(2)
+
 	go func() {
+		defer channelWg.Done()
 		for err := range errors {
 			errs = append(errs, err)
 		}
 	}()
 
-	// Collect directories to apply
-	var directoriesToApply []RdsToApply
 	go func() {
+		defer channelWg.Done()
 		for nd := range resourcesToApplyChannel {
 			directoriesToApply = append(directoriesToApply, nd)
 		}
 	}()
-	wg.Wait()
+
+	// **Wait for both goroutine results before returning**
+	channelWg.Wait()
 
 	if len(errs) > 0 {
 		err := fmt.Errorf("errors occurred while destroying databases in group %s: %v", group.ResourceLabel, errs)
@@ -809,24 +855,23 @@ func applyAllNetworks(ctx context.Context, mm *magicmodel.Operator, networksToAp
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 
 	wg := &sync.WaitGroup{}
-	errors := make(chan error, 0)
+	errors := make(chan error, len(networksToApply))
 
 	for _, d := range networksToApply {
 		// each "d" here is a single network, which is the network resource label
 		wg.Add(1)
-		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying %s %s", dirName, d.DirEntry.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.DirEntry.Name()))
 
-		go func(dir os.DirEntry) {
+		go func(dir os.DirEntry, n types.Network) {
 			defer wg.Done()
-			log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying %s %s", dirName, d.DirEntry.Name()))
+			log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying %s %s", dirName, dir.Name()))
 
 			out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
-			network, err := saveNetworkOutputs(mm, out, group.ID, d.Network)
+			network, err := saveNetworkOutputs(mm, out, group.ID, n)
 			if err != nil {
 				errors <- fmt.Errorf("error saving outputs for %s %s: %v", dirName, dir.Name(), err)
 				return
@@ -844,7 +889,7 @@ func applyAllNetworks(ctx context.Context, mm *magicmodel.Operator, networksToAp
 			//		return
 			//	}
 			//}
-		}(d.DirEntry)
+		}(d.DirEntry, d.Network)
 	}
 
 	go func() {
@@ -874,19 +919,19 @@ func applyAllClusterGrafanas(ctx context.Context, mm *magicmodel.Operator, clust
 		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying %s %s", dirName, d.DirEntry.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.DirEntry.Name()))
 
-		go func(dir os.DirEntry) {
+		go func(dir os.DirEntry, c types.Cluster) {
 			defer wg.Done()
 			out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
-			err = saveClusterGrafanaOutputs(mm, out, group.ID, dir.Name())
+			err = saveClusterGrafanaOutputs(mm, c, out, group.ID)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
-		}(d.DirEntry)
+		}(d.DirEntry, d.Cluster)
 	}
 
 	go func() {
@@ -916,19 +961,19 @@ func applyAllClusters(ctx context.Context, mm *magicmodel.Operator, clustersToAp
 		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying %s %s", dirName, d.DirEntry.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.DirEntry.Name()))
 
-		go func(dir os.DirEntry) {
+		go func(dir os.DirEntry, c types.Cluster) {
 			defer wg.Done()
 			out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
-			err = saveClusterOutputs(mm, out, group.ID, dir.Name())
+			err = saveClusterOutputs(mm, out, c)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
-		}(d.DirEntry)
+		}(d.DirEntry, d.Cluster)
 	}
 
 	go func() {
@@ -995,19 +1040,19 @@ func applyAllRds(ctx context.Context, mm *magicmodel.Operator, rdsToApply []RdsT
 		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Applying %s %s", dirName, d.DirEntry.Name()))
 		path, _ := filepath.Abs(filepath.Join(directoryPath, d.DirEntry.Name()))
 
-		go func(dir os.DirEntry) {
+		go func(dir os.DirEntry, r types.Rds) {
 			defer wg.Done()
 			out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
-			err = saveRdsEndpointAndSecret(mm, out, group.ID, dir.Name(), cfg)
+			err = saveRdsEndpointAndSecret(mm, out, r, cfg)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 				return
 			}
-		}(d.DirEntry)
+		}(d.DirEntry, d.Rds)
 	}
 
 	go func() {
@@ -1036,7 +1081,7 @@ type clusterEndpoints struct {
 	ArgoCdUrl  string `json:"argocd_url"`
 }
 
-func saveClusterGrafanaOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, clusterResourceLabel string) error {
+func saveClusterGrafanaOutputs(mm *magicmodel.Operator, cluster types.Cluster, outputs map[string]tfexec.OutputMeta, groupID string) error {
 	var creds clusterCredentials
 	var urls clusterEndpoints
 
@@ -1053,78 +1098,51 @@ func saveClusterGrafanaOutputs(mm *magicmodel.Operator, outputs map[string]tfexe
 		}
 	}
 
-	var clusters []types.Cluster
-	o := mm.Where(&clusters, "Group.ID", groupID)
+	//cluster.Metadata.Grafana.GrafanaCredentials = creds.GrafanaCredentials
+	//cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.GrafanaUrl}
+	cluster.Metadata.ArgoCd.ArgoCdCredentials = creds.ArgoCdCredentials
+	cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.ArgoCdUrl}
+	o := mm.Update(&cluster, "Metadata", cluster.Metadata)
 	if o.Err != nil {
 		return o.Err
-	}
-	for _, cluster := range clusters {
-		if cluster.ResourceLabel == clusterResourceLabel {
-			//cluster.Metadata.Grafana.GrafanaCredentials = creds.GrafanaCredentials
-			//cluster.Metadata.Grafana.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.GrafanaUrl}
-			cluster.Metadata.ArgoCd.ArgoCdCredentials = creds.ArgoCdCredentials
-			cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{RootDomain: urls.ArgoCdUrl}
-			o = mm.Update(&cluster, "Metadata", cluster.Metadata)
-			if o.Err != nil {
-				return o.Err
-			}
-			break
-		}
 	}
 
 	return nil
 }
 
-func saveClusterOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, clusterResourceLabel string) error {
+func saveClusterOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, cluster types.Cluster) error {
 	for key, output := range outputs {
 		if key == "alb" {
 			var alb AlbMap
 			if err := types.UnmarshalWithErrorDetails(output.Value, &alb); err != nil {
 				return err
 			}
-			var clusters []types.Cluster
-			o := mm.WhereV2(false, &clusters, "Group.ID", groupID)
+
+			cluster.AlbDnsName = alb.DnsName
+			o := mm.Update(&cluster, "AlbDnsName", alb.DnsName)
 			if o.Err != nil {
 				return o.Err
-			}
-			for _, e := range clusters {
-				if e.ResourceLabel == clusterResourceLabel {
-					e.AlbDnsName = alb.DnsName
-					o = mm.Update(&e, "AlbDnsName", alb.DnsName)
-					if o.Err != nil {
-						return o.Err
-					}
-					break
-				}
 			}
 		}
 	}
 	return nil
 }
 
-func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, groupID string, rdsResourceLabel string, cfg aws.Config) error {
+func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, rds types.Rds, cfg aws.Config) error {
 	for key, output := range outputs {
 		if key == "rds_endpoint" {
 			var endpoint string
 			if err := types.UnmarshalWithErrorDetails(output.Value, &endpoint); err != nil {
 				return err
 			}
-			var rds []types.Rds
-			o := mm.Where(&rds, "Group.ID", groupID)
+
+			rds.Endpoint = endpoint
+			o := mm.Update(&rds, "Endpoint", endpoint)
 			if o.Err != nil {
 				return o.Err
 			}
-			for _, e := range rds {
-				if e.ResourceLabel == rdsResourceLabel {
-					e.Endpoint = endpoint
-					o = mm.Update(&e, "Endpoint", endpoint)
-					if o.Err != nil {
-						return o.Err
-					}
-					break
-				}
-			}
 		}
+
 		if key == "cluster_master_user_secret" {
 			var secretArray []map[string]interface{}
 			var secretArn string
@@ -1145,25 +1163,12 @@ func saveRdsEndpointAndSecret(mm *magicmodel.Operator, outputs map[string]tfexec
 			}
 			var usernameAndPassword map[string]string
 			err = types.UnmarshalWithErrorDetails([]byte(*out.SecretString), &usernameAndPassword)
-			var rds []types.Rds
-			o := mm.Where(&rds, "Group.ID", groupID)
+
+			rds.MasterUserSecretArn = secretArn
+			rds.MasterUserPassword = *out.SecretString
+			o := mm.Save(&rds)
 			if o.Err != nil {
 				return o.Err
-			}
-			for _, e := range rds {
-				if e.ResourceLabel == rdsResourceLabel {
-					e.MasterUserSecretArn = secretArn
-					o = mm.Update(&e, "MasterUserSecretArn", secretArn)
-					if o.Err != nil {
-						return o.Err
-					}
-					e.MasterUserPassword = *out.SecretString
-					o = mm.Update(&e, "MasterUserPassword", usernameAndPassword["password"])
-					if o.Err != nil {
-						return o.Err
-					}
-					break
-				}
 			}
 		}
 	}
@@ -1204,14 +1209,6 @@ func saveNetworkOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.Outpu
 		log.Info().Str("GroupID", groupID).Msg("vpc_endpoint_id not found in outputs")
 	}
 
-	//var networks []types.Network
-	//o := mm.WhereV2(true, &networks, "Group.ID", groupID).WhereV2(false, &networks, "ResourceLabel", networkResourceLabel)
-	//if o.Err != nil {
-	//	return nil, o.Err
-	//}
-	//if len(networks) != 1 {
-	//	return nil, fmt.Errorf("network with resource label %s not found or too many returned", networkResourceLabel)
-	//}
 	network.VpcID = vpcMap["vpc_id"].(string)
 	network.WireguardInstanceID = wireguardInstanceID
 	network.WireguardPublicIP = wireguardPublicIP
