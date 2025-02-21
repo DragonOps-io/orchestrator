@@ -1,7 +1,7 @@
 dario.cat/mergo v1.0.0 h1:AGCNq9Evsj31mOgNPcLyXc+4PNABt905YmuqPYYpBWk=
 dario.cat/mergo v1.0.0/go.mod h1:uNxQE+84aUszobStD9th8a29P2fMDhsBdgRYvZOxGmk=
-github.com/DragonOps-io/types v0.0.0-20250218201832-158dd9160229 h1:CtKAA65KBgRYXZ2/CtVgU3FglTQoDa1BgKPa3Xgq6sU=
-github.com/DragonOps-io/types v0.0.0-20250218201832-158dd9160229/go.mod h1:lpSnYk+mFvPFKq0uOFIx95SoFRvNc9bAHcsQideLupg=
+github.com/DragonOps-io/types v0.0.0-20250220155541-15b7952485f9 h1:RC4SyTvng99Q87bskLWCIbuozZv+igJ7/ZzJEYQ2QLI=
+github.com/DragonOps-io/types v0.0.0-20250220155541-15b7952485f9/go.mod h1:lpSnYk+mFvPFKq0uOFIx95SoFRvNc9bAHcsQideLupg=
 github.com/Ilios-LLC/magicmodel-go v0.0.0-20240607010643-b92047a2c75a h1:prwGkcpItbAvolzxQqPHzAaI4Qej8XQeJwV1gue/vOo=
 github.com/Ilios-LLC/magicmodel-go v0.0.0-20240607010643-b92047a2c75a/go.mod h1:+mrsyqxh4w/LTAQySMs4jj9B2Ed2bWiasi9tIZZLj+g=
 github.com/Microsoft/go-winio v0.6.1 h1:9/kr64B9VUZrLm5YYwbGtUJnMgqWVOdUAXu6Migciow=
