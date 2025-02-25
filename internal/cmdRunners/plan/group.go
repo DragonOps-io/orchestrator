@@ -360,7 +360,6 @@ func plan(ctx context.Context, awsCfg aws.Config, group types.Group, stateBucket
 		go func(dir os.DirEntry) {
 			defer wg.Done()
 			// plan terraform or return an error
-			log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(path)
 			err := terraform.PlanGroupTerraform(ctx, awsCfg, planId, stateBucketName, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
