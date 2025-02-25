@@ -250,7 +250,6 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 
 	updatedAccount, updatedNetwork, err := saveOutputs(mm, out, account, orchestratorNetwork[0])
 	if err != nil {
-		//errors <- fmt.Errorf("error saving outputs for %s %s: %v", dirName, dir.Name(), err)
 		account.Observability.Status = "APPLY_FAILED"
 		account.Observability.FailedReason = err.Error()
 		o = mm.Save(&account)

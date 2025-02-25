@@ -630,7 +630,6 @@ func destroy(ctx context.Context, mm *magicmodel.Operator, group types.Group, ex
 				}
 			}
 			// destroy terraform or return an error
-			log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(path)
 			_, err := terraform.DestroyTerraform(ctx, path, *execPath, roleToAssume)
 			if err != nil {
 				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
