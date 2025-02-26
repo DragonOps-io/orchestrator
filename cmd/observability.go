@@ -41,7 +41,7 @@ func newObservabilityApplyCmd() *cobra.Command {
 
 			err = observability.Apply(cmd.Context(), *payload, mm, isDryRun)
 			if err != nil {
-				log.Error().Str("ApplyObservability", err.Error()).Msg(fmt.Sprintf("Encountered an err with applying: %s", err))
+				log.Error().Str("ApplyObservability", err.Error()).Msg("Encountered an err with applying")
 				os.Exit(1)
 			}
 		},
