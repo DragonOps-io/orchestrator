@@ -14,7 +14,7 @@ func init() {
 }
 
 type Payload struct {
-	LambdaID       string   `json:"app_id"`
+	LambdaID       string   `json:"lambda_id"`
 	EnvironmentIDs []string `json:"environment_ids"`
 	JobId          string   `json:"job_id"`
 	JobName        string   `json:"job_name"`
