@@ -35,15 +35,15 @@ func newLambdaApplyCmd() *cobra.Command {
 
 			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
 			if err != nil {
-				log.Error().Str("InstantiateMagicModelOperator", "ApplyApp").Msg(fmt.Sprintf("Encountered an err: %s", err))
+				log.Error().Str("InstantiateMagicModelOperator", "ApplyLambda").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
 			}
 			isDryRun, err := cmd.Flags().GetBool("dry-run")
-			log.Debug().Str("ApplyApp", "isDryRunValue").Str("JobId", payload.JobId).Msg(fmt.Sprintf("%v", isDryRun))
+			log.Debug().Str("ApplyLambda", "isDryRunValue").Str("JobId", payload.JobId).Msg(fmt.Sprintf("%v", isDryRun))
 
 			err = lambda.Apply(cmd.Context(), *payload, mm, isDryRun)
 			if err != nil {
-				log.Error().Str("ApplyApp", err.Error()).Msg(fmt.Sprintf("Encountered an err with applying app with id %s: %s", payload.LambdaID, err))
+				log.Error().Str("ApplyLambda", err.Error()).Msg(fmt.Sprintf("Encountered an err with applying lambda with id %s: %s", payload.LambdaID, err))
 				os.Exit(1)
 			}
 		},
