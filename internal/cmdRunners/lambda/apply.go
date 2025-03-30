@@ -234,7 +234,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 	for _, env := range environments {
 		appPath := fmt.Sprintf("/lambdas/%s/%s", app.ID, env.ID)
-		command := fmt.Sprintf("/app/worker app apply --app-id %s --environment-id %s --table-region %s", app.ID, env.ID, masterAcctRegion)
+		command := fmt.Sprintf("/app/worker lambda apply --app-id %s --environment-id %s --table-region %s", app.ID, env.ID, masterAcctRegion)
 		os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", appPath)
 
 		if os.Getenv("IS_LOCAL") == "true" {
