@@ -234,13 +234,13 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 	for _, env := range environments {
 		appPath := fmt.Sprintf("/lambdas/%s/%s", app.ID, env.ID)
-		command := fmt.Sprintf("/app/worker lambda apply --app-id %s --environment-id %s --table-region %s", app.ID, env.ID, masterAcctRegion)
+		command := fmt.Sprintf("/app/worker lambda apply --lambda-id %s --environment-id %s --table-region %s", app.ID, env.ID, masterAcctRegion)
 		os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", appPath)
 
 		if os.Getenv("IS_LOCAL") == "true" {
 			appPath = fmt.Sprintf("./lambdas/%s/%s", app.ID, env.ID)
 			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", appPath)
-			command = fmt.Sprintf("./app/worker app apply --lambda-id %s --environment-id %s --table-region %s", app.ID, env.ID, masterAcctRegion)
+			command = fmt.Sprintf("./app/worker lambda apply --lambda-id %s --environment-id %s --table-region %s", app.ID, env.ID, masterAcctRegion)
 		}
 
 		log.Debug().Str("LambdaID", app.ID).Msg(appPath)
@@ -249,11 +249,11 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		log.Debug().Str("LambdaID", app.ID).Msg(fmt.Sprintf("Running command %s", command))
 		msg, err := utils.RunOSCommandOrFail(command)
 		if err != nil {
-			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v - %v", app.ID, env.ID, err, msg))
+			ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, fmt.Errorf("Error running `worker lambda apply` with app with id %s and environment with id %s: %v - %v", app.ID, env.ID, err, msg))
 			if ue != nil {
 				return ue
 			}
-			return fmt.Errorf("Error running `worker app apply` with app with id %s and environment with id %s: %v - %v", app.ID, env.ID, err, msg)
+			return fmt.Errorf("Error running `worker lambda apply` with app with id %s and environment with id %s: %v - %v", app.ID, env.ID, err, msg)
 		}
 		log.Debug().Str("LambdaID", app.ID).Msg(*msg)
 
@@ -269,7 +269,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			if ue != nil {
 				return ue
 			}
-			return fmt.Errorf("Error running apply with app with id %s and environment with id %s: %v", app.ID, env.ID, err)
+			return fmt.Errorf("Error running apply with lambda with id %s and environment with id %s: %v", app.ID, env.ID, err)
 		}
 
 		log.Debug().Str("LambdaID", app.ID).Msg("Updating app status")
