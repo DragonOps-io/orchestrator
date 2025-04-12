@@ -318,7 +318,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	return nil
 }
 
-func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string, awsCfg *aws.Config, ctx context.Context, cfOrAlbZoneId string, LambdaID string) error {
+func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName string, awsCfg *aws.Config, ctx context.Context, cfOrAlbZoneId string, LambdaID string) error {
 	for di := range r53Domains {
 		// TODO when we support multi-account come back to this
 		//if r53Domains[di].AwsAccountId != nil {
@@ -382,13 +382,13 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string,
 			if r53Domains[di].Overwrite != nil && *r53Domains[di].Overwrite {
 				if foundRecord.Type == r53Types.RRTypeA {
 					foundRecord.AliasTarget = &r53Types.AliasTarget{
-						DNSName:      &cfDnsName,
+						DNSName:      &cfOrAlbDnsName,
 						HostedZoneId: &cfOrAlbZoneId,
 					}
 				} else if foundRecord.Type == r53Types.RRTypeCname {
 					foundRecord.ResourceRecords = []r53Types.ResourceRecord{
 						{
-							Value: &cfDnsName,
+							Value: &cfOrAlbDnsName,
 						},
 					}
 				} else {
@@ -421,7 +421,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfDnsName string,
 								Name: &r53Domains[di].DomainName,
 								Type: r53Types.RRTypeA,
 								AliasTarget: &r53Types.AliasTarget{
-									DNSName:      &cfDnsName,
+									DNSName:      &cfOrAlbDnsName,
 									HostedZoneId: &cfOrAlbZoneId,
 								},
 							},
