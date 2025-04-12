@@ -17,8 +17,8 @@ func newLambdaCommand() *cobra.Command {
 		Short: "Interact with lambdas",
 	}
 	appCmd.AddCommand(newLambdaApplyCmd())
-	//appCmd.AddCommand(newAppDestroyCmd())
-	//appCmd.AddCommand(newAppRemoveCmd())
+	appCmd.AddCommand(newLambdaDestroyCmd())
+	appCmd.AddCommand(newLambdaRemoveCmd())
 	return appCmd
 }
 
@@ -51,60 +51,60 @@ func newLambdaApplyCmd() *cobra.Command {
 	return cmd
 }
 
-//func newAppDestroyCmd() *cobra.Command {
-//	cmd := &cobra.Command{
-//		Use:   "destroy",
-//		Short: "Destroy an app stack",
-//		Run: func(cmd *cobra.Command, args []string) {
-//			isDryRun, err := cmd.Flags().GetBool("dry-run")
-//
-//			payload, err := app.GetPayload()
-//			if err != nil {
-//				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
-//				os.Exit(1)
-//			}
-//
-//			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
-//			if err != nil {
-//				log.Error().Str("InstantiateMagicModelOperator", "DestroyApp").Msg(fmt.Sprintf("Encountered an err: %s", err))
-//				os.Exit(1)
-//			}
-//
-//			err = app.Destroy(cmd.Context(), *payload, mm, isDryRun)
-//			if err != nil {
-//				log.Error().Str("DestroyApp", err.Error()).Msg(fmt.Sprintf("Encountered an err with destroying app with id %s: %s", payload.AppID, err))
-//				os.Exit(1)
-//			}
-//		},
-//	}
-//	return cmd
-//}
-//
-//func newAppRemoveCmd() *cobra.Command {
-//	cmd := &cobra.Command{
-//		Use:   "remove",
-//		Short: "Remove an app completely",
-//		Run: func(cmd *cobra.Command, args []string) {
-//			isDryRun, err := cmd.Flags().GetBool("dry-run")
-//
-//			payload, err := app.GetPayload()
-//			if err != nil {
-//				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
-//				os.Exit(1)
-//			}
-//
-//			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
-//			if err != nil {
-//				log.Error().Str("InstantiateMagicModelOperator", "RemoveApp").Msg(fmt.Sprintf("Encountered an err: %s", err))
-//				os.Exit(1)
-//			}
-//
-//			err = app.Remove(cmd.Context(), *payload, mm, isDryRun)
-//			if err != nil {
-//				log.Error().Str("RemoveApp", err.Error()).Msg(fmt.Sprintf("Encountered an err with destroying app with id %s: %s", payload.AppID, err))
-//				os.Exit(1)
-//			}
-//		},
-//	}
-//	return cmd
-//}
+func newLambdaDestroyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "destroy",
+		Short: "Destroy a lambda stack",
+		Run: func(cmd *cobra.Command, args []string) {
+			payload, err := lambda.GetPayload()
+			if err != nil {
+				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
+				os.Exit(1)
+			}
+
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			if err != nil {
+				log.Error().Str("InstantiateMagicModelOperator", "DestroyLambda").Msg(fmt.Sprintf("Encountered an err: %s", err))
+				os.Exit(1)
+			}
+			isDryRun, err := cmd.Flags().GetBool("dry-run")
+			log.Debug().Str("DestroyLambda", "isDryRunValue").Str("JobId", payload.JobId).Msg(fmt.Sprintf("%v", isDryRun))
+
+			err = lambda.Destroy(cmd.Context(), *payload, mm, isDryRun)
+			if err != nil {
+				log.Error().Str("DestroyLambda", err.Error()).Msg(fmt.Sprintf("Encountered an err with destroying lambda with id %s: %s", payload.LambdaID, err))
+				os.Exit(1)
+			}
+		},
+	}
+	return cmd
+}
+
+func newLambdaRemoveCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "remove",
+		Short: "Remove an app completely",
+		Run: func(cmd *cobra.Command, args []string) {
+			payload, err := lambda.GetPayload()
+			if err != nil {
+				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
+				os.Exit(1)
+			}
+
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			if err != nil {
+				log.Error().Str("InstantiateMagicModelOperator", "RemoveLambda").Msg(fmt.Sprintf("Encountered an err: %s", err))
+				os.Exit(1)
+			}
+			isDryRun, err := cmd.Flags().GetBool("dry-run")
+			log.Debug().Str("RemoveLambda", "isDryRunValue").Str("JobId", payload.JobId).Msg(fmt.Sprintf("%v", isDryRun))
+
+			err = lambda.Remove(cmd.Context(), *payload, mm, isDryRun)
+			if err != nil {
+				log.Error().Str("RemoveLambda", err.Error()).Msg(fmt.Sprintf("Encountered an err with removing lambda with id %s: %s", payload.LambdaID, err))
+				os.Exit(1)
+			}
+		},
+	}
+	return cmd
+}
