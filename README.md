@@ -33,3 +33,5 @@ AWS Account you are using to test (ie, the "client" account).
   * `-ldflags "-X main.bugSnagDevKey=<bug_snag_dev_key>"` --> Ask someone on your team for the bug snag dev key
 
 >Note: These instructions are a WIP. Please provide any feedback or clarifications you find to the dragonops team so we can improve them.
+
+Test

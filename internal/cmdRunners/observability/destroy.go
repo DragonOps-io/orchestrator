@@ -37,12 +37,12 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
-		log.Err(fmt.Errorf("no RECEIPT_HANDLE variable found")).Str("JobId", payload.JobId).Msg("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
+		//log.Err(fmt.Errorf("no RECEIPT_HANDLE variable found")).Str("JobId", payload.JobId).Msg("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
 		masterAccount.Observability.Status = "DESTROY_FAILED"
 		masterAccount.Observability.FailedReason = fmt.Errorf("no RECEIPT_HANDLE variable found").Error()
 		o = mm.Save(&masterAccount)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
+			//log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return o.Err
 		}
 		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
@@ -217,9 +217,7 @@ func destroy(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, execP
 		return o.Err
 	}
 	orchestratorNetwork[0].WireguardPublicIP = ""
-	orchestratorNetwork[0].WireguardPort = ""
 	orchestratorNetwork[0].WireguardInstanceID = ""
-	orchestratorNetwork[0].WireguardIP = ""
 	orchestratorNetwork[0].WireguardPrivateKey = ""
 	orchestratorNetwork[0].WireguardPublicKey = ""
 

@@ -30,12 +30,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	accounts := []types.Account{}
 	o := mm.WhereV2(false, &accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
-		log.Err(o.Err).Str("JobId", payload.JobId).Msg("Error finding MasterAccount")
 		return fmt.Errorf("Error when trying to retrieve master account: %s", o.Err)
 	}
 
 	if len(accounts) == 0 {
-		log.Debug().Str("JobId", payload.JobId).Msg("No Master Account found")
 		return fmt.Errorf("No Master Account found")
 	}
 
@@ -44,12 +42,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
-		log.Err(fmt.Errorf("no RECEIPT_HANDLE variable found")).Str("JobId", payload.JobId).Msg("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
 		masterAccount.Observability.Status = "APPLY_FAILED"
 		masterAccount.Observability.FailedReason = fmt.Errorf("no RECEIPT_HANDLE variable found").Error()
 		o = mm.Save(&masterAccount)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return o.Err
 		}
 		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
@@ -64,7 +60,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		masterAccount.Observability.FailedReason = err.Error()
 		o = mm.Save(&masterAccount)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return o.Err
 		}
 		return err
@@ -73,12 +68,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	// get the doApiKey from secrets manager, not the payload
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
-		log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
 		masterAccount.Observability.Status = "APPLY_FAILED"
 		masterAccount.Observability.FailedReason = err.Error()
 		o = mm.Save(&masterAccount)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return o.Err
 		}
 		return err
@@ -90,19 +83,16 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		masterAccount.Observability.FailedReason = err.Error()
 		o = mm.Save(&masterAccount)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return o.Err
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
 	}
 
 	if !authResponse.IsValid {
-		log.Err(fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")).Str("JobId", payload.JobId).Msg("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 		masterAccount.Observability.Status = "APPLY_FAILED"
 		masterAccount.Observability.FailedReason = fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.").Error()
 		o = mm.Save(&masterAccount)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return o.Err
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
@@ -125,12 +115,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		log.Debug().Str("JobId", payload.JobId).Msg("Preparing Terraform")
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
 			masterAccount.Observability.Status = "APPLY_FAILED"
 			masterAccount.Observability.FailedReason = err.Error()
 			o = mm.Save(&masterAccount)
 			if o.Err != nil {
-				log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 				return o.Err
 			}
 			return err
@@ -139,12 +127,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		log.Debug().Str("JobId", payload.JobId).Msg(fmt.Sprintf("Region for magic model is: %s", masterAccount.AwsRegion))
 		updatedAccount, err := formatWithWorkerAndApply(ctx, cfg, masterAccount.AwsRegion, mm, masterAccount, execPath, payload)
 		if err != nil {
-			log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
 			masterAccount.Observability.Status = "APPLY_FAILED"
 			masterAccount.Observability.FailedReason = err.Error()
 			o = mm.Save(&masterAccount)
 			if o.Err != nil {
-				log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 				return o.Err
 			}
 			return err
@@ -159,7 +145,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	masterAccount.Observability.FailedReason = ""
 	o = mm.Save(&masterAccount)
 	if o.Err != nil {
-		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return o.Err
 	}
 
@@ -174,7 +159,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		ReceiptHandle: &receiptHandle,
 	})
 	if err != nil {
-		log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
 		return err
 	}
 	return nil
@@ -196,12 +180,10 @@ func formatWithWorkerAndApply(ctx context.Context, cfg aws.Config, masterAcctReg
 		if msg != nil {
 			strMsg = *msg
 		}
-		log.Err(err).Str("JobId", payload.JobId).Msg(strMsg)
 		account.Observability.Status = "APPLY_FAILED"
 		account.Observability.FailedReason = fmt.Sprintf("%s: %s", err, strMsg)
 		o := mm.Save(&account)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return nil, o.Err
 		}
 		return nil, fmt.Errorf("Error running `worker observability apply` for account: %s: %s", err, strMsg)
@@ -211,15 +193,13 @@ func formatWithWorkerAndApply(ctx context.Context, cfg aws.Config, masterAcctReg
 
 	updatedAccount, err := apply(ctx, cfg, mm, account, execPath, nil, account.AwsAccountId, payload)
 	if err != nil {
-		log.Err(err).Str("JobId", payload.JobId).Msg(err.Error())
 		account.Observability.Status = "APPLY_FAILED"
 		account.Observability.FailedReason = err.Error()
 		o := mm.Save(&account)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return nil, o.Err
 		}
-		return nil, fmt.Errorf("Error running apply for observability stack: %s", err)
+		return nil, fmt.Errorf("Error running terraform apply for observability stack: %s", err)
 	}
 	return updatedAccount, nil
 }
@@ -230,12 +210,10 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 	log.Debug().Str("JobId", payload.JobId).Msg(path)
 	out, err := terraform.ApplyTerraform(ctx, path, *execPath, roleToAssume)
 	if err != nil {
-		//errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
 		account.Observability.Status = "APPLY_FAILED"
 		account.Observability.FailedReason = err.Error()
 		o := mm.Save(&account)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return nil, o.Err
 		}
 		return nil, err
@@ -244,7 +222,6 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 	var orchestratorNetwork []types.Network
 	o := mm.WhereV2(false, &orchestratorNetwork, "Name", aws.String("dragonops-orchestrator"))
 	if o.Err != nil {
-		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return nil, o.Err
 	}
 
@@ -254,7 +231,6 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 		account.Observability.FailedReason = err.Error()
 		o = mm.Save(&account)
 		if o.Err != nil {
-			log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 			return nil, o.Err
 		}
 		return nil, err
@@ -262,7 +238,6 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 
 	err = handleWireguardUpdates(mm, *updatedNetwork, cfg, payload.JobId)
 	if err != nil {
-		log.Err(o.Err).Str("JobId", payload.JobId).Msg(err.Error())
 		return nil, err
 	}
 
