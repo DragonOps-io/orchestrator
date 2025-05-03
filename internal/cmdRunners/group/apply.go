@@ -503,6 +503,7 @@ func destroyAllNetworks(ctx context.Context, mm *magicmodel.Operator, group type
 	return directoriesToApply, nil
 }
 
+// TODO add instance deletion stuff here
 func destroyAllClusters(ctx context.Context, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, dirName string, payload Payload) ([]ClusterToApply, error) {
 	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
 	directories, _ := os.ReadDir(directoryPath)
