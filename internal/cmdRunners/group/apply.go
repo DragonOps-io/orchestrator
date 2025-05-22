@@ -177,6 +177,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		// TODO
 		return err
 	}
+	terraformDirectoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), fmt.Sprintf("group/%s", group.ResourceLabel))
 
 	// Parse the JSON output
 	var resources Resources
@@ -186,17 +187,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		// TODO
 		return err
 	}
-
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Templating Terraform for destroy with targeting...")
-	err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
-	if err != nil {
-		// TODO
-		return err
-	}
-
-	terraformDirectoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), fmt.Sprintf("group/%s", group.ResourceLabel))
-
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Retrieving resources to destroy...")
+	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Retrieving resources to destroy (if any)...")
 	allResourcesToDelete, err := getAllResourcesToDeleteByGroupId(mm, group.ID)
 	if err != nil {
 		return fmt.Errorf("error retrieving resources to delete: %v", err)
@@ -205,6 +196,13 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	terraformResourcesToDelete := getExactTerraformResourceNames(allResourcesToDelete, resources)
 
 	if len(terraformResourcesToDelete) > 0 {
+		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Templating Terraform for destroy with targeting...")
+		err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
+		if err != nil {
+			// TODO
+			return err
+		}
+
 		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Destroying resources removed from config...")
 		err = terraform.DestroyTerraformTargets(ctx, terraformDirectoryPath, *execPath, terraformResourcesToDelete, roleToAssume)
 		if err != nil {
