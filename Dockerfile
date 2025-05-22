@@ -3,7 +3,7 @@ FROM 989911971741.dkr.ecr.us-east-1.amazonaws.com/dragonops-worker:${WORKER_VERS
 
 FROM alpine:3.18.3
 WORKDIR /app
-RUN apk add --no-cache bash git age aws-cli wireguard-tools
+RUN apk add --no-cache bash git age aws-cli wireguard-tools rsync
 COPY orchestrator .
 COPY --from=worker /app/worker .
 COPY --from=worker /app/tmpl.tgz.age .
