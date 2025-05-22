@@ -33,7 +33,7 @@ func newGroupApplyCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", nil, config.WithRegion(payload.Region))
 			if err != nil {
 				log.Error().Str("InstantiateMagicModelOperator", "ApplyGroup").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
@@ -62,7 +62,7 @@ func newGroupDestroyCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", nil, config.WithRegion(payload.Region))
 			if err != nil {
 				log.Error().Str("InstantiateMagicModelOperator", "DestroyGroup").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
