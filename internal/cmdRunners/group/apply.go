@@ -216,7 +216,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		}
 	}
 
-	// template with worked a second time, now that resources are destroyed
+	// template with worker a second time, now that resources are destroyed
 	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Templating Terraform for apply...")
 	err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
 	if err != nil {
