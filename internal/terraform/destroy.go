@@ -61,11 +61,3 @@ func DestroyTerraformTargets(ctx context.Context, stackPath string, execPath str
 
 	return nil
 }
-
-// cluster: purple
-// network: main
-// network: purple
-
-// I want to delete resources related to the cluster but not the network. That feels impossible to know with the current setup of
-// everything being in the same stack.
-// I would almost need to keep a list of resources somewhere that are related to cluster v network etc.
