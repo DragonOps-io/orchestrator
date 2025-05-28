@@ -18,7 +18,7 @@ import (
 func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
 	log.Debug().
 		Str("AppID", payload.AppID).
-		Msg("Attempting to destroy app environment")
+		Msg("Beginning app-environment destroy")
 
 	app := types.App{}
 	o := mm.Find(&app, payload.AppID)

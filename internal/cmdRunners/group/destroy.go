@@ -24,7 +24,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	log.Debug().
 		Str("GroupID", payload.GroupID).
 		Str("JobId", payload.JobId).
-		Msg("Attempting to destroy group")
+		Msg("Beginning group destroy")
 
 	group := types.Group{}
 	o := mm.Find(&group, payload.GroupID)
