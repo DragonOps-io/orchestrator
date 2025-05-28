@@ -12,7 +12,9 @@ func ApplyTerraform(ctx context.Context, stackPath string, execPath string, role
 		return nil, fmt.Errorf("error running NewTerraform: %s", err)
 	}
 
-	initOptions := []tfexec.InitOption{tfexec.Upgrade(true), tfexec.Reconfigure(true)}
+	var initOptions []tfexec.InitOption
+	// TODO maybe this is the issue
+	//initOptions = []tfexec.InitOption{tfexec.Upgrade(true), tfexec.Reconfigure(true)}
 	if roleArn != nil {
 		initOptions = append(initOptions, tfexec.BackendConfig(fmt.Sprintf("role_arn=%s", *roleArn)))
 	}

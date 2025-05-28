@@ -223,19 +223,19 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		return fmt.Errorf("error templating terraform: %v", err)
 	}
 
-	// TODO: If we track a status or InitialApply or something for resources, we could skip this step if there are no new resources.
-	allResourcesToApplyWithTargeting, err := getAllResourcesForApplyTargetingByGroupId(mm, group.ID)
-	if err != nil {
-		return fmt.Errorf("error retrieving resources to apply: %v", err)
-	}
-	terraformResourcesToTarget := getExactTerraformResourceNamesForTargetApply(allResourcesToApplyWithTargeting)
-	if len(terraformResourcesToTarget) > 0 {
-		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Applying terraform with targeting...")
-		_, err = terraform.ApplyTerraformWithTargets(ctx, terraformDirectoryPath, *execPath, terraformResourcesToTarget, roleToAssume)
-		if err != nil {
-			return fmt.Errorf("error applying terraform with targeting: %v", err)
-		}
-	}
+	//// TODO: If we track a status or InitialApply or something for resources, we could skip this step if there are no new resources.
+	//allResourcesToApplyWithTargeting, err := getAllResourcesForApplyTargetingByGroupId(mm, group.ID)
+	//if err != nil {
+	//	return fmt.Errorf("error retrieving resources to apply: %v", err)
+	//}
+	//terraformResourcesToTarget := getExactTerraformResourceNamesForTargetApply(allResourcesToApplyWithTargeting)
+	//if len(terraformResourcesToTarget) > 0 {
+	//	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Applying terraform with targeting...")
+	//	_, err = terraform.ApplyTerraformWithTargets(ctx, terraformDirectoryPath, *execPath, terraformResourcesToTarget, roleToAssume)
+	//	if err != nil {
+	//		return fmt.Errorf("error applying terraform with targeting: %v", err)
+	//	}
+	//}
 
 	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Applying all terraform resources...")
 	out, err := terraform.ApplyTerraform(ctx, terraformDirectoryPath, *execPath, roleToAssume)

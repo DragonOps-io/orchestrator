@@ -12,7 +12,8 @@ func DestroyTerraform(ctx context.Context, stackPath string, execPath string, ro
 		return nil, fmt.Errorf("error running NewTerraform: %s", err)
 	}
 
-	initOptions := []tfexec.InitOption{tfexec.Upgrade(true), tfexec.Reconfigure(true)}
+	//initOptions := []tfexec.InitOption{tfexec.Upgrade(true), tfexec.Reconfigure(true)}
+	var initOptions []tfexec.InitOption
 	if roleArn != nil {
 		initOptions = append(initOptions, tfexec.BackendConfig(fmt.Sprintf("role_arn=%s", *roleArn)))
 	}
