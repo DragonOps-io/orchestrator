@@ -126,7 +126,7 @@ func saveClusterOutputs(mm *magicmodel.Operator, cluster types.Cluster, outputs 
 		RootDomain: urls.ArgoCdUrl,
 	}
 
-	if o := mm.Update(&cluster, "Metadata", cluster.Metadata); o.Err != nil {
+	if o := mm.Save(&cluster); o.Err != nil {
 		return o.Err
 	}
 
