@@ -1,9 +1,9 @@
 dario.cat/mergo v1.0.0 h1:AGCNq9Evsj31mOgNPcLyXc+4PNABt905YmuqPYYpBWk=
 dario.cat/mergo v1.0.0/go.mod h1:uNxQE+84aUszobStD9th8a29P2fMDhsBdgRYvZOxGmk=
-github.com/DragonOps-io/types v0.0.0-20250502215502-d449df174974 h1:gMqNtQYusY23aYy50WMh5H9TY8CW5WkqRBb1Jnqx4C0=
-github.com/DragonOps-io/types v0.0.0-20250502215502-d449df174974/go.mod h1:kjJddWdO0YffCHP18Wm2XD7M3yeRrRpcyaFSupHI68c=
-github.com/Ilios-LLC/magicmodel-go v0.0.0-20240607010643-b92047a2c75a h1:prwGkcpItbAvolzxQqPHzAaI4Qej8XQeJwV1gue/vOo=
-github.com/Ilios-LLC/magicmodel-go v0.0.0-20240607010643-b92047a2c75a/go.mod h1:+mrsyqxh4w/LTAQySMs4jj9B2Ed2bWiasi9tIZZLj+g=
+github.com/DragonOps-io/types v0.0.0-20250503015158-c2340d4002d7 h1:8vlBrwxRlH3zNBKGpUEE8e4kBNu1bOmBnu6YPnK595A=
+github.com/DragonOps-io/types v0.0.0-20250503015158-c2340d4002d7/go.mod h1:kjJddWdO0YffCHP18Wm2XD7M3yeRrRpcyaFSupHI68c=
+github.com/Ilios-LLC/magicmodel-go v0.0.0-20250522145903-d5a2cd7d0cbf h1:gODbMkSXQgW48IdgWahjGvLO6AUdCIZUazCpy09D9P0=
+github.com/Ilios-LLC/magicmodel-go v0.0.0-20250522145903-d5a2cd7d0cbf/go.mod h1:68LeHKzPAkIvtvxW+5wdFrYnDC1dduOKGvmRL7mkfUg=
 github.com/Microsoft/go-winio v0.6.1 h1:9/kr64B9VUZrLm5YYwbGtUJnMgqWVOdUAXu6Migciow=
 github.com/Microsoft/go-winio v0.6.1/go.mod h1:LRdKpFKfdobln8UmuiYcKPot9D2v6svN5+sAH+4kjUM=
 github.com/ProtonMail/go-crypto v0.0.0-20230717121422-5aa5874ade95 h1:KLq8BE0KwCL+mmXnjLWEAOYO+2l2AE4YMmqG1ZpZHBs=
@@ -38,8 +38,6 @@ github.com/aws/aws-sdk-go-v2/service/dynamodb v1.27.1 h1:plNo3WtooT2fYnhdyuzzsIJ
 github.com/aws/aws-sdk-go-v2/service/dynamodb v1.27.1/go.mod h1:N5tqZcYMM0N1PN7UQYJNWuGyO886OfnMhf/3MAbqMcI=
 github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.17.3 h1:xXAI0rrBlyN7bUcNQgLMSLv2nwwXbWS+eJ6/WVXXt4o=
 github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.17.3/go.mod h1:GPI9hUB4HyNslck05LhlyUGslK/OZVJpKxY1tJfbZYU=
-github.com/aws/aws-sdk-go-v2/service/ec2 v1.159.0 h1:DmmVmiLPlcntOcjWMRwDPMNx/wi2kAVrf2ZmSN5gkAg=
-github.com/aws/aws-sdk-go-v2/service/ec2 v1.159.0/go.mod h1:xejKuuRDjz6z5OqyeLsz01MlOqqW7CqpAB4PabNvpu8=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.2 h1:Ji0DY1xUsUr3I8cHps0G+XM3WWU16lP6yG8qu1GAZAs=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.2/go.mod h1:5CsjAbs3NlGQyZNFACh+zztPDI7fU6eW9QsxjfnuBKg=
 github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.3.11 h1:4vt9Sspk59EZyHCAEMaktHKiq0C09noRTQorXD/qV+s=
@@ -50,8 +48,6 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.11 h1:o4T+fKxA
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.11/go.mod h1:84oZdJ+VjuJKs9v1UTC9NaodRZRseOXCTgku+vQJWR8=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.9 h1:TE2i0A9ErH1YfRSvXfCr2SQwfnqsoJT9nPQ9kj0lkxM=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.9/go.mod h1:9TzXX3MehQNGPwCZ3ka4CpwQsoAMWSF48/b+De9rfVM=
-github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.21.4 h1:c1jtPWZSmgMmPkCgwv67GE0ugdEgnLVo/BHR1wl3Dm0=
-github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.21.4/go.mod h1:FWw+Jnx+SlpsrU/NQ/f7f+1RdixTApZiU2o9FOubiDQ=
 github.com/aws/aws-sdk-go-v2/service/route53 v1.37.0 h1:f3hBZWtpn9clZGXJoqahQeec9ZPZnu22g8pg+zNyif0=
 github.com/aws/aws-sdk-go-v2/service/route53 v1.37.0/go.mod h1:8qqfpG4mug2JLlEyWPSFhEGvJiaZ9iPmMDDMYc5Xtas=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.55.1 h1:UAxBuh0/8sFJk1qOkvOKewP5sWeWaTPDknbQz0ZkDm0=

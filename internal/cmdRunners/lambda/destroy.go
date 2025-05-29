@@ -18,7 +18,7 @@ import (
 func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
 	log.Debug().
 		Str("LambdaID", payload.LambdaID).
-		Msg("Attempting to destroy lambda environment")
+		Msg("Beginning lambda-environment destroy")
 
 	lambda := types.Lambda{}
 	o := mm.Find(&lambda, payload.LambdaID)

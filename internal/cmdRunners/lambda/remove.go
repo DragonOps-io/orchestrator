@@ -18,7 +18,7 @@ import (
 func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
 	log.Debug().
 		Str("LambdaID", payload.LambdaID).
-		Msg("Attempting to remove app")
+		Msg("Beginning lambda to remove")
 
 	lambda := types.Lambda{}
 	o := mm.Find(&lambda, payload.LambdaID)

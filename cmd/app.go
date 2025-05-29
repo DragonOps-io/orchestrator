@@ -33,7 +33,7 @@ func newAppApplyCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", nil, config.WithRegion(payload.Region))
 			if err != nil {
 				log.Error().Str("InstantiateMagicModelOperator", "ApplyApp").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
@@ -64,7 +64,7 @@ func newAppDestroyCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", nil, config.WithRegion(payload.Region))
 			if err != nil {
 				log.Error().Str("InstantiateMagicModelOperator", "DestroyApp").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
@@ -93,7 +93,7 @@ func newAppRemoveCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", nil, config.WithRegion(payload.Region))
 			if err != nil {
 				log.Error().Str("InstantiateMagicModelOperator", "RemoveApp").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
