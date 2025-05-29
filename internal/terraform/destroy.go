@@ -12,7 +12,8 @@ func DestroyTerraform(ctx context.Context, stackPath string, execPath string, ro
 		return nil, fmt.Errorf("error running NewTerraform: %s", err)
 	}
 
-	initOptions := []tfexec.InitOption{tfexec.Upgrade(true), tfexec.Reconfigure(true)}
+	//initOptions := []tfexec.InitOption{tfexec.Upgrade(true), tfexec.Reconfigure(true)}
+	var initOptions []tfexec.InitOption
 	if roleArn != nil {
 		initOptions = append(initOptions, tfexec.BackendConfig(fmt.Sprintf("role_arn=%s", *roleArn)))
 	}
@@ -31,4 +32,33 @@ func DestroyTerraform(ctx context.Context, stackPath string, execPath string, ro
 		return nil, fmt.Errorf("error retrieving outputs: %s", err)
 	}
 	return outputs, nil
+}
+
+func DestroyTerraformTargets(ctx context.Context, stackPath string, execPath string, targets []string, roleArn *string) error {
+	tf, err := tfexec.NewTerraform(stackPath, execPath)
+	if err != nil {
+		return fmt.Errorf("error running NewTerraform: %s", err)
+	}
+
+	initOptions := []tfexec.InitOption{tfexec.Upgrade(true), tfexec.Reconfigure(true)}
+	if roleArn != nil {
+		initOptions = append(initOptions, tfexec.BackendConfig(fmt.Sprintf("role_arn=%s", *roleArn)))
+	}
+	err = tf.Init(ctx, initOptions...)
+	if err != nil {
+		return fmt.Errorf("error running Init: %s", err)
+	}
+
+	// Prepare destroy options with targets
+	var destroyOptions []tfexec.DestroyOption
+	for _, t := range targets {
+		destroyOptions = append(destroyOptions, tfexec.Target(t))
+	}
+
+	// Run 'terraform destroy' with targets
+	if err = tf.Destroy(ctx, destroyOptions...); err != nil {
+		return fmt.Errorf("error running terraform destroy: %w", err)
+	}
+
+	return nil
 }

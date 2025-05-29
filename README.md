@@ -5,7 +5,7 @@ DragonOps infrastructure. It is written in Golang and runs as an ECS task in the
 
 It is open source for visibility into how DragonOps works and what is being executed in client accounts.
 
-## Local Development
+## Local Development - DragonOps Devs
 If you are developing locally and plan to test in AWS, CI/CD will take care of all of the below.
 
 If you need to test your changes locally, you need to do a few things first.
@@ -19,14 +19,14 @@ AWS Account you are using to test (ie, the "client" account).
 * In your code editor/IDE, you will need a few environment variables set:
 ```bash
  AWS_REGION=us-east-1
- DRAGONOPS_API=https://api.dev.dragonops.io
+ DRAGONOPS_API=set-to-dev-dragonops-api
  IS_LOCAL=true
  MESSAGE={"app_id": "your-app-id", "environment_ids": ["your-env-id","your-env-id-2"], "job_id": "your-job-id", "job_name": "app apply", "region": "us-east-1", "user_name": "your-do-username"}
- RECEIPT_HANDLE=blah # can be any value
+ RECEIPT_HANDLE=blah
 ```
 * For the `MESSAGE` env var:
     * `job_id` can be any randomized string value
-    * `job_name` should be one of app apply, group apply , app destroy, etc
+    * `job_name` should be one of `app apply`, `group apply`, `app destroy`, etc
     * `region` is the AWS region you are working in
     * `user_name` is your DO username - this can be found in secrets manager in the AWS Account you are working in.
 * For go tool arguments section, you will need to add:
@@ -34,4 +34,4 @@ AWS Account you are using to test (ie, the "client" account).
 
 >Note: These instructions are a WIP. Please provide any feedback or clarifications you find to the dragonops team so we can improve them.
 
-Test
+{"group_id": "3fefb10c-d608-43c7-83ce-6c9dd03a3eb0", "job_id": "your-job-id", "job_name": "group apply", "region": "us-east-1", "user_name": "kia-martinez"}
