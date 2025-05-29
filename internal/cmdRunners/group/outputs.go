@@ -118,6 +118,7 @@ func saveClusterOutputs(mm *magicmodel.Operator, cluster types.Cluster, outputs 
 		}
 	}
 
+	cluster.AlbDnsName = alb.DnsName
 	cluster.Metadata.ArgoCd.ArgoCdCredentials = creds.ArgoCdCredentials
 	cluster.Metadata.ArgoCd.EndpointMetadata = types.EndpointMetadata{
 		RootDomain: urls.ArgoCdUrl,
