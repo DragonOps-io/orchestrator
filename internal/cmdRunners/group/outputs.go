@@ -115,6 +115,8 @@ func saveClusterOutputs(mm *magicmodel.Operator, cluster types.Cluster, outputs 
 			if err := types.UnmarshalWithErrorDetails(output.Value, &alb); err != nil {
 				return fmt.Errorf("unmarshal alb: %w", err)
 			}
+		default:
+			fmt.Println("Skipping output key:", key, "as it does not match expected keys for cluster outputs.")
 		}
 	}
 
