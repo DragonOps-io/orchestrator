@@ -29,7 +29,7 @@ func newPlanGroupCmd() *cobra.Command {
 				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
 			}
-			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", nil, config.WithRegion(payload.Region))
 			if err != nil {
 				log.Error().Str("InstantiateMagicModelOperator", "PlanGroup").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
@@ -55,7 +55,7 @@ func newPlanAppCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", config.WithRegion(payload.Region))
+			mm, err := magicmodel.NewMagicModelOperator(cmd.Context(), "dragonops-orchestrator", nil, config.WithRegion(payload.Region))
 			if err != nil {
 				log.Error().Str("InstantiateMagicModelOperator", "PlanApp").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)

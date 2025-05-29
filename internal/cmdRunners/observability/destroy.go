@@ -19,8 +19,8 @@ import (
 func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
 	log.Debug().
 		Str("JobId", payload.JobId).
-		Msg("Attempting to destroy observability stack.")
-	accounts := []types.Account{}
+		Msg("Beginning to observability destroy.")
+	var accounts []types.Account
 	o := mm.WhereV2(false, &accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
 		log.Err(o.Err).Str("JobId", payload.JobId).Msg("Error finding MasterAccount")
