@@ -67,20 +67,6 @@ jobs:
                 sha: '${{ github.sha }}'
             })
 
-      - name: Open PR to preprod
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.ORCH_REPO_PATH }} # Fine-grained GitHub PAT that was saved as repository secret
-          script: |
-            await github.rest.pulls.create({
-                owner: 'DragonOps-io',
-                repo: 'orchestrator',
-                title: 'Merge in tag v${{ steps.bump.outputs.new_version }} to preprod',
-                body: 'Do not delete the branch upon merge! The branch needs to be used to deploy to prod next.',
-                head: 'v${{ steps.bump.outputs.new_version }}',
-                base: 'preprod'
-            })
-
       - name: Open PR to prod
         uses: actions/github-script@v7
         with:
