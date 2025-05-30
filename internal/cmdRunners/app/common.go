@@ -104,10 +104,6 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, env types.E
 				if err := json.Unmarshal(out["app_dashboard_url"].Value, &appDashboardUrl); err != nil {
 					fmt.Printf("Error decoding output value for key %s: %s\n", "app_dashboard_url", err)
 				}
-				// need to get the unique id for loki datasource from cluster
-				app.Environments[idx].ObservabilityUrls = &types.ObservabilityUrls{
-					UnifiedDashboard: appDashboardUrl,
-				}
 
 				app.ObservabilityUrls = &types.ObservabilityUrls{
 					UnifiedDashboard: appDashboardUrl,
