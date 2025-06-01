@@ -128,8 +128,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 		log.Debug().Str("AppID", app.ID).Msg("Dry run is false. Running terraform")
 
-		// TODO how do i get the master account role arn and the org id
-		// TODO can't get it from stytch, so i guess we need to make cross-account roles allow admin access from the master account
 		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToApply, execPath, &cfg)
 		if err != nil {
 			return err
