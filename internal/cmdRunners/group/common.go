@@ -51,7 +51,6 @@ func GetPayload() (*Payload, error) {
 type GroupResources struct {
 	Networks []types.Network
 	Clusters []types.Cluster
-	Envs     []types.Environment
 	Rds      []types.Rds
 }
 
@@ -62,10 +61,6 @@ func getAllResourcesToDeleteByGroupId(mm *magicmodel.Operator, groupID string) (
 		return nil, o.Err
 	}
 	o = mm.WhereV3(true, &resources.Clusters, "Group.ID", groupID).WhereV3(false, &resources.Clusters, "MarkedForDeletion", true)
-	if o.Err != nil {
-		return nil, o.Err
-	}
-	o = mm.WhereV3(true, &resources.Envs, "Group.ID", groupID).WhereV3(false, &resources.Envs, "MarkedForDeletion", true)
 	if o.Err != nil {
 		return nil, o.Err
 	}
@@ -98,11 +93,6 @@ func getAllResourcesByGroupId(mm *magicmodel.Operator, groupID string) (*GroupRe
 	}
 
 	o = mm.WhereV2(false, &resources.Clusters, "Group.ID", groupID)
-	if o.Err != nil {
-		return nil, o.Err
-	}
-
-	o = mm.WhereV2(false, &resources.Envs, "Group.ID", groupID)
 	if o.Err != nil {
 		return nil, o.Err
 	}
@@ -161,14 +151,6 @@ func deleteResourcesFromDynamo(ctx context.Context, resources *GroupResources, m
 		}
 	}
 
-	for _, env := range resources.Envs {
-		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Deleting environment %s record from DynamoDb.", env.Name))
-		o := mm.SoftDelete(&env)
-		if o.Err != nil {
-			return o.Err
-		}
-	}
-
 	for _, db := range resources.Rds {
 		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Deleting database %s record from DynamoDb.", db.Name))
 		o := mm.SoftDelete(&db)
@@ -194,12 +176,6 @@ func getExactTerraformResourceNames(allResourcesToDelete *GroupResources, resour
 		}
 	}
 
-	for _, environment := range allResourcesToDelete.Envs {
-		for _, r := range resources.Data["environment"] {
-			replacedString := strings.Replace(r, "do_environment_dot_resource_label", environment.ResourceLabel, -1)
-			terraformResourcesToDelete = append(terraformResourcesToDelete, replacedString)
-		}
-	}
 	for _, rds := range allResourcesToDelete.Rds {
 		for _, r := range resources.Data["network"] {
 			replacedString := strings.Replace(r, "do_rds_dot_resource_label", rds.ResourceLabel, -1)
@@ -244,12 +220,6 @@ func deleteGroupResources(mm *magicmodel.Operator, allResourcesToDelete *GroupRe
 		}
 	}
 
-	for _, environment := range allResourcesToDelete.Envs {
-		o := mm.SoftDelete(&environment)
-		if o.Err != nil {
-			return o.Err
-		}
-	}
 	for _, rds := range allResourcesToDelete.Rds {
 		o := mm.SoftDelete(&rds)
 		if o.Err != nil {

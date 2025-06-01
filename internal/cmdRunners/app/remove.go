@@ -27,21 +27,12 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 	}
 	log.Debug().Str("AppID", app.ID).Msg("Found app")
 
-	var appEnvironmentsToDestroy []types.Environment
-	for _, envId := range payload.EnvironmentIDs {
-		env := types.Environment{}
-		o = mm.Find(&env, envId)
-		if o.Err != nil {
-			return o.Err
-		}
-		appEnvironmentsToDestroy = append(appEnvironmentsToDestroy, env)
-	}
+	appEnvironmentsToDestroy := payload.EnvironmentNames
 	log.Debug().Str("AppID", app.ID).Msg("Retrieved environments to destroy")
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
-		// need to update the status of the environments map instead of the app
-		ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
+		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
 		if ue != nil {
 			return ue
 		}
@@ -51,9 +42,9 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 	var accounts []types.Account
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
-		o = mm.Update(&app, "Status", "DELETE_FAILED")
-		if o.Err != nil {
-			return o.Err
+		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, o.Err.Error())
+		if ue != nil {
+			return ue
 		}
 		return fmt.Errorf("an error occurred when trying to find the Master Account: %s", o.Err)
 	}
@@ -65,30 +56,34 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 		return nil
 	})
 	if err != nil {
+		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+		if ue != nil {
+			return ue
+		}
 		return err
 	}
 
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
-		o = mm.Update(&app, "Status", "DELETE_FAILED")
-		if o.Err != nil {
-			return o.Err
+		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+		if ue != nil {
+			return ue
 		}
 		return fmt.Errorf("an error occurred when trying to find the Do Api Key: %s", o.Err)
 	}
 
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
-		aco := mm.Update(&app, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			return aco.Err
+		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+		if ue != nil {
+			return ue
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
 	}
 	if !authResponse.IsValid {
-		aco := mm.Update(&app, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			return aco.Err
+		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, "The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
+		if ue != nil {
+			return ue
 		}
 		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 	}
@@ -105,7 +100,7 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+			ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
 			if ue != nil {
 				return ue
 			}
@@ -116,26 +111,14 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 
 		err = formatWithWorkerAndDestroy(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToDestroy, execPath)
 		if err != nil {
-			ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
-			if ue != nil {
-				return ue
-			}
 			return err
 		}
 	} else {
-		for _, env := range appEnvironmentsToDestroy {
-			for idx := range app.Environments {
-				if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel {
-					app.Environments[idx].Status = "DESTROYED"
-					app.Environments[idx].Endpoint = ""
-				}
-			}
-			o = mm.Save(&app)
-			if o.Err != nil {
-				return o.Err
-			}
-			log.Debug().Str("AppID", app.ID).Msg("App environment status updated")
+		err = utils.UpdateEnvironmentStatusesToDestroyed(app, appEnvironmentsToDestroy, mm)
+		if err != nil {
+			return fmt.Errorf("error updating environment statuses to destroyed: %v", err)
 		}
+		log.Debug().Str("AppID", app.ID).Msg("App environment status updated")
 	}
 
 	queueParts := strings.Split(*app.AppSqsArn, ":")
@@ -154,10 +137,6 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 
 	o = mm.SoftDelete(&app)
 	if o.Err != nil {
-		ue := updateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, o.Err.Error())
-		if ue != nil {
-			return ue
-		}
 		return o.Err
 	}
 	return nil

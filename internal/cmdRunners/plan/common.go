@@ -14,14 +14,14 @@ func init() {
 }
 
 type Payload struct {
-	GroupID        string   `json:"group_id"`
-	JobId          string   `json:"job_id"`
-	JobName        string   `json:"job_name"`
-	Region         string   `json:"region"`
-	UserName       string   `json:"user_name"`
-	PlanId         string   `json:"plan_id"`
-	AppID          string   `json:"app_id"`
-	EnvironmentIDs []string `json:"environment_ids"`
+	GroupID          string   `json:"group_id"`
+	JobId            string   `json:"job_id"`
+	JobName          string   `json:"job_name"`
+	Region           string   `json:"region"`
+	UserName         string   `json:"user_name"`
+	PlanId           string   `json:"plan_id"`
+	AppID            string   `json:"app_id"`
+	EnvironmentNames []string `json:"environment_names"`
 }
 
 func GetPayload() (*Payload, error) {

@@ -3,6 +3,8 @@ package utils
 import (
 	"context"
 	"fmt"
+	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	"os"
@@ -109,4 +111,135 @@ func GetDoApiKeyFromSecretsManager(ctx context.Context, cfg aws.Config, userName
 		return nil, err
 	}
 	return resp.SecretString, err
+}
+
+func UpdateEnvironmentStatusesToApplyFailed(app types.App, environmentsToApply []string, mm *magicmodel.Operator, err error) error {
+	for _, envName := range environmentsToApply {
+		if env, ok := app.Environments[envName]; ok && env.Status == "APPLYING" {
+			env.Status = "APPLY_FAILED"
+			env.FailedReason = err.Error()
+			app.Environments[envName] = env
+		}
+	}
+
+	aco := mm.Update(&app, "Environments", app.Environments)
+	if aco.Err != nil {
+		return aco.Err
+	}
+	return nil
+}
+
+func UpdateSingleEnvironmentStatusToApplyFailed(app types.App, envName string, mm *magicmodel.Operator, err error) error {
+	env, exists := app.Environments[envName]
+	if exists && env.Status == "APPLYING" {
+		env.Status = "APPLY_FAILED"
+		env.FailedReason = err.Error()
+		app.Environments[envName] = env
+	}
+
+	aco := mm.Update(&app, "Environments", app.Environments)
+	if aco.Err != nil {
+		return aco.Err
+	}
+	return nil
+}
+
+func UpdateSingleEnvironmentStatusToDestroyed(app types.App, envName string, mm *magicmodel.Operator) error {
+	appEnv, exists := app.Environments[envName]
+	if exists && appEnv.Status == "DESTROYING" {
+		appEnv.Status = "DESTROYED"
+		appEnv.FailedReason = ""
+		app.Environments[envName] = appEnv
+	}
+
+	aco := mm.Update(&app, "Environments", app.Environments)
+	if aco.Err != nil {
+		return aco.Err
+	}
+	return nil
+}
+
+func UpdateSingleEnvironmentStatusToDestroyFailed(app types.App, envName string, mm *magicmodel.Operator, err error) error {
+	env, exists := app.Environments[envName]
+	if exists && env.Status == "DESTROYING" {
+		env.Status = "DESTROY_FAILED"
+		env.FailedReason = err.Error()
+		app.Environments[envName] = env
+	}
+
+	aco := mm.Update(&app, "Environments", app.Environments)
+	if aco.Err != nil {
+		return aco.Err
+	}
+	return nil
+}
+
+func UpdateSingleEnvironmentStatusToApplied(app types.App, envName string, mm *magicmodel.Operator) error {
+	appEnv, exists := app.Environments[envName]
+	if exists && appEnv.Status == "APPLYING" {
+		appEnv.Status = "APPLIED"
+		appEnv.FailedReason = ""
+		app.Environments[envName] = appEnv
+	}
+
+	aco := mm.Update(&app, "Environments", app.Environments)
+	if aco.Err != nil {
+		return aco.Err
+	}
+	return nil
+}
+
+func UpdateEnvironmentStatusesToDestroyFailed(app types.App, environmentsToApply []string, mm *magicmodel.Operator, errMsg string) error {
+	for _, envName := range environmentsToApply {
+		if env, ok := app.Environments[envName]; ok && env.Status == "DESTROYING" {
+			env.Status = "DESTROY_FAILED"
+			env.FailedReason = errMsg
+			app.Environments[envName] = env
+		}
+	}
+
+	aco := mm.Update(&app, "Environments", app.Environments)
+	if aco.Err != nil {
+		return aco.Err
+	}
+	return nil
+}
+
+func UpdateEnvironmentStatusesToDestroyed(app types.App, environmentsToApply []string, mm *magicmodel.Operator) error {
+	for _, envName := range environmentsToApply {
+		if env, ok := app.Environments[envName]; ok && env.Status == "DESTROYING" {
+			env.Status = "DESTROYED"
+			env.FailedReason = ""
+			app.Environments[envName] = env
+		}
+	}
+
+	aco := mm.Update(&app, "Environments", app.Environments)
+	if aco.Err != nil {
+		return aco.Err
+	}
+	return nil
+}
+
+func RunWorkerAppApply(mm *magicmodel.Operator, app types.App, appPath, envName, masterAcctRegion string) error {
+	command := fmt.Sprintf("/app/worker app apply --app-id %s --environment-name %s --table-region %s", app.ID, envName, masterAcctRegion)
+	os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", appPath)
+
+	if os.Getenv("IS_LOCAL") == "true" {
+		appPath = fmt.Sprintf("./apps/%s/%s", app.ID, envName)
+		os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", appPath)
+		command = fmt.Sprintf("./app/worker app apply --app-id %s --environment-name %s --table-region %s", app.ID, envName, masterAcctRegion)
+	}
+
+	log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Templating terraform application files for environment %s", envName))
+	msg, err := RunOSCommandOrFail(command)
+	if err != nil {
+		ue := UpdateSingleEnvironmentStatusToApplyFailed(app, envName, mm, fmt.Errorf("Error running `worker app apply` with app with id %s and environment with name %s: %v - %v", app.ID, envName, err, msg))
+		if ue != nil {
+			return ue
+		}
+		return fmt.Errorf("error running `worker app apply` with app with id %s and environment with name %s: %v - %v", app.ID, envName, err, msg)
+	}
+	log.Debug().Str("AppID", app.ID).Msg(*msg)
+	return nil
 }

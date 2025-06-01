@@ -41,20 +41,12 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	}
 	log.Debug().Str("AppID", app.ID).Msg("Found app")
 
-	var appEnvironmentsToApply []types.Environment
-	for _, envId := range payload.EnvironmentIDs {
-		env := types.Environment{}
-		o = mm.Find(&env, envId)
-		if o.Err != nil {
-			return o.Err
-		}
-		appEnvironmentsToApply = append(appEnvironmentsToApply, env)
-	}
+	appEnvironmentsToApply := payload.EnvironmentNames
 	log.Debug().Str("AppID", app.ID).Msg("Retrieved environments to apply")
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
-		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, fmt.Errorf("no RECEIPT_HANDLE variable found"))
+		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, fmt.Errorf("no RECEIPT_HANDLE variable found"))
 		if ue != nil {
 			return ue
 		}
@@ -64,7 +56,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	var accounts []types.Account
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
-		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, o.Err)
+		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, o.Err)
 		if ue != nil {
 			return ue
 		}
@@ -77,7 +69,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		return nil
 	})
 	if err != nil {
-		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 		if ue != nil {
 			return ue
 		}
@@ -87,7 +79,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	// get the doApiKey from secrets manager, not the payload
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
-		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 		if ue != nil {
 			return ue
 		}
@@ -96,7 +88,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
-		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 		if ue != nil {
 			return ue
 		}
@@ -104,7 +96,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	}
 
 	if !authResponse.IsValid {
-		ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help"))
+		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help"))
 		if ue != nil {
 			return ue
 		}
@@ -127,7 +119,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			ue := updateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+			ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
 			if ue != nil {
 				return ue
 			}
@@ -165,102 +157,43 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	return nil
 }
 
-func updateEnvironmentStatusesToApplyFailed(app types.App, environmentsToApply []types.Environment, mm *magicmodel.Operator, err error) error {
-	for _, env := range environmentsToApply {
-		for idx := range app.Environments {
-			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "APPLYING" {
-				app.Environments[idx].Status = "APPLY_FAILED"
-				app.Environments[idx].FailedReason = err.Error()
-			}
-		}
-	}
-	aco := mm.Update(&app, "Environments", app.Environments)
-	if aco.Err != nil {
-		return aco.Err
-	}
-	return nil
-}
-
-func updateSingleEnvironmentStatusToApplyFailed(app types.App, env types.Environment, mm *magicmodel.Operator, err error) error {
-	for idx := range app.Environments {
-		if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "APPLYING" {
-			app.Environments[idx].Status = "APPLY_FAILED"
-			app.Environments[idx].FailedReason = err.Error()
-		}
-	}
-	aco := mm.Update(&app, "Environments", app.Environments)
-	if aco.Err != nil {
-		return aco.Err
-	}
-	return nil
-}
-
-func updateSingleEnvironmentStatusToApplied(app types.App, env types.Environment, mm *magicmodel.Operator) error {
-	for idx := range app.Environments {
-		if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "APPLYING" {
-			app.Environments[idx].Status = "APPLIED"
-			app.Environments[idx].FailedReason = ""
-		}
-	}
-	aco := mm.Update(&app, "Environments", app.Environments)
-	if aco.Err != nil {
-		return aco.Err
-	}
-	return nil
-}
-
-func updateEnvironmentStatusesToApplied(app types.App, environmentsToApply []types.Environment, mm *magicmodel.Operator) error {
-	for _, env := range environmentsToApply {
-		for idx := range app.Environments {
-			if app.Environments[idx].Environment == env.ResourceLabel && app.Environments[idx].Group == env.Group.ResourceLabel && app.Environments[idx].Status == "APPLYING" {
-				app.Environments[idx].Status = "APPLIED"
-				app.Environments[idx].FailedReason = ""
-			}
-		}
-	}
-	aco := mm.Update(&app, "Environments", app.Environments)
-	if aco.Err != nil {
-		return aco.Err
-	}
-	return nil
-}
-
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []types.Environment, execPath *string, awsCfg *aws.Config) error {
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []string, execPath *string, awsCfg *aws.Config) error {
 	wg := &sync.WaitGroup{}
 	errors := make(chan error, 0)
 
 	for _, env := range environments {
 		wg.Add(1)
 
-		go func(e types.Environment) {
+		go func(e string) {
 			defer wg.Done()
 
 			var roleToAssume *string
-			if env.Group.Account.CrossAccountRoleArn != nil {
-				roleToAssume = env.Group.Account.CrossAccountRoleArn
-			}
+			// TODO how does cross-account work with this new env stuff?
+			//if env.Group.Account.CrossAccountRoleArn != nil {
+			//	roleToAssume = env.Group.Account.CrossAccountRoleArn
+			//}
 
-			appEnvPath := fmt.Sprintf("/apps/%s/%s", app.ID, env.ID)
+			appEnvPath := fmt.Sprintf("/apps/%s/%s", app.ID, env)
 
-			err := runWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
+			err := utils.RunWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
 			if err != nil {
-				ue := updateSingleEnvironmentStatusToApplyFailed(app, env, mm, err)
+				ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, env, mm, err)
 				if ue != nil {
-					errors <- fmt.Errorf("error updating status for env %s: %v", env.ID, err)
+					errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 					return
 				}
-				errors <- fmt.Errorf("error for env %s: %v", env.ID, err)
+				errors <- fmt.Errorf("error for env %s: %v", env, err)
 				return
 			}
 
 			var out map[string]tfexec.OutputMeta
 			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
 			if err != nil {
-				ue := updateSingleEnvironmentStatusToApplyFailed(app, env, mm, err)
+				ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, env, mm, err)
 				if ue != nil {
-					errors <- fmt.Errorf("error updating status for env %s: %v", env.ID, ue)
+					errors <- fmt.Errorf("error updating status for env %s: %v", env, ue)
 				}
-				errors <- fmt.Errorf("error for env %s: %v", env.ID, err)
+				errors <- fmt.Errorf("error for env %s: %v", env, err)
 				return
 			}
 
@@ -269,13 +202,13 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			err = handleAppEnvironmentOutputs(ctx, app, env, mm, out, awsCfg, albZoneMap)
 			o := mm.Save(&app)
 			if o.Err != nil {
-				errors <- fmt.Errorf("error updating status for env %s: %v", env.ID, o.Err)
+				errors <- fmt.Errorf("error updating status for env %s: %v", env, o.Err)
 				return
 			}
 
-			err = updateSingleEnvironmentStatusToApplied(app, env, mm)
+			err = utils.UpdateSingleEnvironmentStatusToApplied(app, env, mm)
 			if err != nil {
-				errors <- fmt.Errorf("error updating status for env %s: %v", env.ID, err)
+				errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 				return
 			}
 
@@ -308,7 +241,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 		//var accounts []types.Account
 		//o := mm.WhereV2(false, &accounts, "AwsAccountId", *dnsAwsAccountId)
 		//if o.Err != nil {
-		//	ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+		//	ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
 		//	if ue != nil {
 		//		return ue
 		//	}
@@ -316,7 +249,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 		//}
 		//
 		//if len(accounts) == 0 {
-		//	ue := updateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+		//	ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
 		//	if ue != nil {
 		//		return ue
 		//	}
