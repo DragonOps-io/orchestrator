@@ -144,6 +144,19 @@ func UpdateSingleEnvironmentStatusToApplyFailed(app types.App, envName string, m
 	return nil
 }
 
+func UpdateSingleEnvironmentStatus(app types.App, envName, status string, mm *magicmodel.Operator, errMsg string) error {
+	if appEnv, exists := app.Environments[envName]; exists {
+		appEnv.Status = status
+		appEnv.FailedReason = errMsg
+		app.Environments[envName] = appEnv
+		aco := mm.Update(&app, "Environments", app.Environments)
+		if aco.Err != nil {
+			return aco.Err
+		}
+	}
+	return nil
+}
+
 func UpdateSingleEnvironmentStatusToDestroyed(app types.App, envName string, mm *magicmodel.Operator) error {
 	appEnv, exists := app.Environments[envName]
 	if exists && appEnv.Status == "DESTROYING" {

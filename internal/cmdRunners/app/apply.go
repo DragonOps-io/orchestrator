@@ -175,7 +175,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 			err := utils.RunWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, env, mm, err)
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error())
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 					return
@@ -187,7 +187,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 			var out map[string]tfexec.OutputMeta
 			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, env, mm, err)
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error())
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, ue)
 				}
@@ -204,7 +204,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 				return
 			}
 
-			err = utils.UpdateSingleEnvironmentStatusToApplied(app, env, mm)
+			err = utils.UpdateSingleEnvironmentStatus(app, env, "APPLIED", mm, "")
 			if err != nil {
 				errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 				return
