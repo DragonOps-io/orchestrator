@@ -46,7 +46,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, fmt.Errorf("no RECEIPT_HANDLE variable found"))
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
 		if ue != nil {
 			return ue
 		}
@@ -56,7 +56,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	var accounts []types.Account
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, o.Err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, o.Err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -69,7 +69,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		return nil
 	})
 	if err != nil {
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -79,7 +79,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	// get the doApiKey from secrets manager, not the payload
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -88,7 +88,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -96,7 +96,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	}
 
 	if !authResponse.IsValid {
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help"))
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help").Error())
 		if ue != nil {
 			return ue
 		}
@@ -119,7 +119,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToApply, mm, err)
+			ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, err.Error())
 			if ue != nil {
 				return ue
 			}
@@ -239,7 +239,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 		//var accounts []types.Account
 		//o := mm.WhereV2(false, &accounts, "AwsAccountId", *dnsAwsAccountId)
 		//if o.Err != nil {
-		//	ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+		//	ue := utils.UpdateAllEnvironmentStatuses(app, environments, mm, err)
 		//	if ue != nil {
 		//		return ue
 		//	}
@@ -247,7 +247,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 		//}
 		//
 		//if len(accounts) == 0 {
-		//	ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, environments, mm, err)
+		//	ue := utils.UpdateAllEnvironmentStatuses(app, environments, mm, err)
 		//	if ue != nil {
 		//		return ue
 		//	}

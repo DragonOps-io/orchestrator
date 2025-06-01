@@ -38,7 +38,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
 		log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Error finding RECEIPT_HANDLE env var.")
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToPlan, mm, fmt.Errorf("no RECEIPT_HANDLE variable found"))
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToPlan, "APPLY_FAILED", mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
 		if ue != nil {
 			log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(ue.Error())
 			return ue
@@ -50,7 +50,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
 		log.Err(o.Err).Str("AppID", payload.AppID).Str("JobId", payload.JobId).Msg(o.Err.Error())
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToPlan, mm, o.Err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToPlan, "APPLY_FAILED", mm, o.Err.Error())
 		if ue != nil {
 			log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(ue.Error())
 			return ue
@@ -65,7 +65,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 	})
 	if err != nil {
 		log.Err(o.Err).Str("AppID", payload.AppID).Str("JobId", payload.JobId).Msg(err.Error())
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToPlan, mm, err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToPlan, "APPLY_FAILED", mm, err.Error())
 		if ue != nil {
 			log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(ue.Error())
 			return ue
@@ -77,7 +77,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
 		log.Err(o.Err).Str("AppID", payload.AppID).Str("JobId", payload.JobId).Msg(err.Error())
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToPlan, mm, err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToPlan, "APPLY_FAILED", mm, err.Error())
 		if ue != nil {
 			log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(ue.Error())
 			return ue
@@ -88,7 +88,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
 		log.Err(o.Err).Str("AppID", payload.AppID).Str("JobId", payload.JobId).Msg(err.Error())
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToPlan, mm, err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToPlan, "APPLY_FAILED", mm, err.Error())
 		if ue != nil {
 			log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(ue.Error())
 			return ue
@@ -97,7 +97,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 	}
 	if !authResponse.IsValid {
 		log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Invalid do api key provided.")
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToPlan, mm, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help"))
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToPlan, "APPLY_FAILED", mm, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help").Error())
 		if ue != nil {
 			log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(ue.Error())
 			return ue
@@ -121,7 +121,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 	execPath, err = terraform.PrepareTerraform(ctx)
 	if err != nil {
 		log.Err(o.Err).Str("AppID", payload.AppID).Str("JobId", payload.JobId).Msg(err.Error())
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToPlan, mm, err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToPlan, "APPLY_FAILED", mm, err.Error())
 		if ue != nil {
 			log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(ue.Error())
 			return ue
@@ -134,7 +134,7 @@ func AppPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) erro
 	err = formatWithWorkerAndPlanApp(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToPlan, execPath, cfg, payload.PlanId, *accounts[0].StateBucketName, payload)
 	if err != nil {
 		log.Err(o.Err).Str("AppID", payload.AppID).Str("JobId", payload.JobId).Msg(err.Error())
-		ue := utils.UpdateEnvironmentStatusesToApplyFailed(app, appEnvironmentsToPlan, mm, err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToPlan, "APPLY_FAILED", mm, err.Error())
 		if ue != nil {
 			log.Err(o.Err).Str("AppID", app.ID).Str("JobId", payload.JobId).Msg(ue.Error())
 			return ue
@@ -186,7 +186,7 @@ func formatWithWorkerAndPlanApp(ctx context.Context, masterAcctRegion string, mm
 
 			err := utils.RunWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, env, mm, err)
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error())
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 					return
@@ -197,7 +197,7 @@ func formatWithWorkerAndPlanApp(ctx context.Context, masterAcctRegion string, mm
 
 			err = terraform.PlanAppTerraform(ctx, awsConfig, planId, stateBucketName, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, env, mm, err)
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error())
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, ue)
 				}
@@ -207,7 +207,7 @@ func formatWithWorkerAndPlanApp(ctx context.Context, masterAcctRegion string, mm
 
 			log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Updating app status")
 
-			err = utils.UpdateSingleEnvironmentStatusToApplied(app, env, mm)
+			err = utils.UpdateSingleEnvironmentStatus(app, env, "APPLIED", mm, "")
 			if err != nil {
 				errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 				return

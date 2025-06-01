@@ -74,7 +74,7 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 
 			err := handleRoute53Domains(envConfig.Route53DomainNames, cfDnsName, awsCfg, ctx, "Z2FDTNDATAQYW2", app.ID)
 			if err != nil {
-				if ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, envKey, mm, err); ue != nil {
+				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, err.Error()); ue != nil {
 					return ue
 				}
 			}
@@ -90,13 +90,13 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 			//	var networks []types.Network
 			//	o := mm.WhereV2(true, &networks, "Group.ResourceLabel", strings.Split(envConfig.Network, ".")[0]).WhereV2(false, &networks, "ResourceLabel", strings.Split(envConfig.Network, ".")[1])
 			//	if o.Err != nil {
-			//		if ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, envKey, mm, o.Err); ue != nil {
+			//		if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, mm, o.Err); ue != nil {
 			//			return ue
 			//		}
 			//		return fmt.Errorf("Error finding cluster %s: %v", envConfig.Cluster, o.Err)
 			//	}
 			//	if len(networks) == 0 {
-			//		if ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, envKey, mm, fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster)); ue != nil {
+			//		if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, mm, fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster)); ue != nil {
 			//			return ue
 			//		}
 			//		return fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster)
@@ -116,7 +116,7 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 
 			err := handleRoute53Domains(envConfig.Route53DomainNames, apiGatewayDnsName, awsCfg, ctx, apiGatewayDnsHostedZoneId, app.ID)
 			if err != nil {
-				if ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, envKey, mm, err); ue != nil {
+				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, err.Error()); ue != nil {
 					return ue
 				}
 				return fmt.Errorf("Error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)
@@ -140,13 +140,13 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 			var clusters []types.Cluster
 			o := mm.WhereV2(true, &clusters, "Group.ResourceLabel", strings.Split(envConfig.Cluster, ".")[0]).WhereV2(false, &clusters, "ResourceLabel", strings.Split(envConfig.Cluster, ".")[1])
 			if o.Err != nil {
-				if ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, envKey, mm, o.Err); ue != nil {
+				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, o.Err.Error()); ue != nil {
 					return ue
 				}
 				return fmt.Errorf("Error finding cluster %s: %v", envConfig.Cluster, o.Err)
 			}
 			if len(clusters) == 0 {
-				if ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, envKey, mm, fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster)); ue != nil {
+				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster).Error()); ue != nil {
 					return ue
 				}
 				return fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster)
@@ -154,7 +154,7 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 			cluster = clusters[0]
 			err := handleRoute53Domains(envConfig.Route53DomainNames, cluster.AlbDnsName, awsCfg, ctx, albZoneMap[cluster.Group.Account.Region], app.ID)
 			if err != nil {
-				if ue := utils.UpdateSingleEnvironmentStatusToApplyFailed(app, envKey, mm, err); ue != nil {
+				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, err.Error()); ue != nil {
 					return ue
 				}
 				return fmt.Errorf("Error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)

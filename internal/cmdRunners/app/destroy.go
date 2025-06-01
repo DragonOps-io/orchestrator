@@ -32,7 +32,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 
 	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	if receiptHandle == "" {
-		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
 		if ue != nil {
 			return ue
 		}
@@ -42,7 +42,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	var accounts []types.Account
 	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
-		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, o.Err.Error())
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -57,7 +57,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		return nil
 	})
 	if err != nil {
-		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -66,7 +66,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 
 	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
 	if err != nil {
-		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -75,14 +75,14 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 
 	authResponse, err := utils.IsApiKeyValid(*doApiKey)
 	if err != nil {
-		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
 		if ue != nil {
 			return ue
 		}
 		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
 	}
 	if !authResponse.IsValid {
-		ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, "The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, "The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
 		if ue != nil {
 			return ue
 		}
@@ -104,7 +104,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			ue := utils.UpdateEnvironmentStatusesToDestroyFailed(app, appEnvironmentsToDestroy, mm, err.Error())
+			ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
 			if ue != nil {
 				return ue
 			}
@@ -118,7 +118,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 			return err
 		}
 	} else {
-		err = utils.UpdateEnvironmentStatusesToDestroyed(app, appEnvironmentsToDestroy, mm)
+		err = utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY", mm, "")
 		if err != nil {
 			return fmt.Errorf("error updating environment statuses to destroyed: %v", err)
 		}
@@ -161,7 +161,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 
 			err := utils.RunWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatusToDestroyFailed(app, env, mm, err)
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "DESTROY_FAILED", mm, err.Error())
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 					return
@@ -172,7 +172,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 
 			_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatusToDestroyFailed(app, env, mm, err)
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "DESTROY_FAILED", mm, err.Error())
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, ue)
 				}
@@ -182,7 +182,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 
 			log.Debug().Str("AppID", app.ID).Msg("Terraform applied! Updating app status")
 
-			err = utils.UpdateSingleEnvironmentStatusToDestroyed(app, env, mm)
+			err = utils.UpdateSingleEnvironmentStatus(app, env, "DESTROYED", mm, "")
 			if err != nil {
 				errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 				return
