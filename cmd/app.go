@@ -27,6 +27,8 @@ func newAppApplyCmd() *cobra.Command {
 		Use:   "apply",
 		Short: "Apply an app stack",
 		Run: func(cmd *cobra.Command, args []string) {
+			isDryRun, _ := cmd.Flags().GetBool("dry-run")
+			
 			payload, err := app.GetPayload()
 			if err != nil {
 				log.Error().Str("GetPayload", err.Error()).Msg(fmt.Sprintf("Encountered an err: %s", err))
@@ -38,8 +40,6 @@ func newAppApplyCmd() *cobra.Command {
 				log.Error().Str("InstantiateMagicModelOperator", "ApplyApp").Msg(fmt.Sprintf("Encountered an err: %s", err))
 				os.Exit(1)
 			}
-			isDryRun, err := cmd.Flags().GetBool("dry-run")
-			log.Debug().Str("ApplyApp", "isDryRunValue").Str("JobId", payload.JobId).Msg(fmt.Sprintf("%v", isDryRun))
 
 			err = app.Apply(cmd.Context(), *payload, mm, isDryRun)
 			if err != nil {
