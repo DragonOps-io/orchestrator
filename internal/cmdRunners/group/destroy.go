@@ -21,7 +21,7 @@ import (
 )
 
 func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
-	log.Debug().
+	log.Info().
 		Str("GroupID", payload.GroupID).
 		Str("JobId", payload.JobId).
 		Msg("Retrieving group for destroy")
@@ -95,7 +95,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		}
 	}
 
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Finished Terraform destroy. Cleaning up other resources...")
+	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Finished Terraform destroy. Cleaning up other resources...")
 
 	resources, err := getAllResourcesByGroupId(mm, group.ID)
 	if err != nil {
@@ -139,7 +139,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	if o.Err != nil {
 		return o.Err
 	}
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Finished deleting all resources for group")
+	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Finished deleting all resources for group")
 	return nil
 }
 
