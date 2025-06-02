@@ -74,14 +74,12 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 
 			err := handleRoute53Domains(envConfig.Route53DomainNames, cfDnsName, awsCfg, ctx, "Z2FDTNDATAQYW2", app.ID)
 			if err != nil {
-				fmt.Println(err)
 				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, err.Error()); ue != nil {
 					return ue
 				}
 				return fmt.Errorf("Error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)
 			}
 		case "serverless":
-			fmt.Println("serverless app")
 			var apiGatewayDnsHostedZoneId string
 			if err := json.Unmarshal(out["api_gateway_dns_hosted_zone_id"].Value, &apiGatewayDnsHostedZoneId); err != nil {
 				fmt.Printf("Error decoding output value for key %s: %s\n", "api_gateway_dns_hosted_zone_id", err)
@@ -99,7 +97,6 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 				}
 				return fmt.Errorf("Error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)
 			}
-			fmt.Println("created route53 domains i think")
 		default:
 			var appDashboardUrl string
 			if err := json.Unmarshal(out["app_dashboard_url"].Value, &appDashboardUrl); err != nil {
