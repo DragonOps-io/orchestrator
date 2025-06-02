@@ -7,8 +7,6 @@ import (
 	"github.com/DragonOps-io/orchestrator/internal/utils"
 	"github.com/DragonOps-io/types"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/rs/zerolog/log"
 	"os"
@@ -17,81 +15,26 @@ import (
 )
 
 func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
-	log.Debug().
+	log.Info().
 		Str("AppID", payload.AppID).
-		Msg("Beginning app-environment destroy")
+		Msg("Retrieving app to destroy...")
 
 	app := types.App{}
 	o := mm.Find(&app, payload.AppID)
 	if o.Err != nil {
 		return fmt.Errorf("an error occurred when trying to find the item with id %s: %s", payload.AppID, o.Err)
 	}
-	log.Debug().Str("AppID", app.ID).Msg("Found app")
 
 	appEnvironmentsToDestroy := payload.EnvironmentNames
 
-	receiptHandle := os.Getenv("RECEIPT_HANDLE")
-	if receiptHandle == "" {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
-		if ue != nil {
-			return ue
-		}
-		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
-	}
-
-	var accounts []types.Account
-	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
-	if o.Err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
-		if ue != nil {
-			return ue
-		}
-		return fmt.Errorf("an error occurred when trying to find the Master Account: %s", o.Err)
-	}
-
-	log.Debug().Str("AppID", payload.AppID).Msg("Found Master Account")
-	// get the doApiKey from secrets manager, not the payload
-
-	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		config.WithRegion(accounts[0].AwsRegion)
-		return nil
-	})
+	masterAccount, cfg, err := utils.CommonStartupTasks(ctx, mm, payload.UserName)
 	if err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, err.Error())
 		if ue != nil {
 			return ue
 		}
-		return err
+		return fmt.Errorf("error during common startup tasks: %v", err)
 	}
-
-	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
-	if err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
-		if ue != nil {
-			return ue
-		}
-		return fmt.Errorf("an error occurred when trying to find the Do Api Key: %s", o.Err)
-	}
-
-	authResponse, err := utils.IsApiKeyValid(*doApiKey)
-	if err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
-		if ue != nil {
-			return ue
-		}
-		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
-	}
-	if !authResponse.IsValid {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, "The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-		if ue != nil {
-			return ue
-		}
-		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-	}
-
-	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
-		o.Region = accounts[0].AwsRegion
-	})
 
 	if !isDryRun {
 		if os.Getenv("IS_LOCAL") == "true" {
@@ -99,7 +42,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		} else {
 			os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
 		}
-		log.Debug().Str("AppID", app.ID).Msg("Preparing Terraform")
+		log.Info().Str("AppID", app.ID).Msg("Preparing Terraform")
 
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
@@ -111,25 +54,29 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 			return err
 		}
 
-		log.Debug().Str("AppID", app.ID).Msg("Dry run is false. Running terraform")
+		log.Info().Str("AppID", app.ID).Msg("Running terraform...")
 
-		err = formatWithWorkerAndDestroy(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToDestroy, execPath)
+		err = formatWithWorkerAndDestroy(ctx, masterAccount.AwsRegion, mm, app, appEnvironmentsToDestroy, execPath)
 		if err != nil {
 			return err
 		}
 	} else {
-		err = utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY", mm, "")
+		err = utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROYED", mm, "")
 		if err != nil {
 			return fmt.Errorf("error updating environment statuses to destroyed: %v", err)
 		}
-		log.Debug().Str("AppID", app.ID).Msg("App environment status updated")
 	}
 
 	queueParts := strings.Split(*app.AppSqsArn, ":")
 	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
 
-	log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
+	log.Info().Str("AppID", app.ID).Msg("App updated")
 
+	sqsClient := sqs.NewFromConfig(*cfg, func(o *sqs.Options) {
+		o.Region = masterAccount.AwsRegion
+	})
+
+	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	_, err = sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      &queueUrl,
 		ReceiptHandle: &receiptHandle,
@@ -180,15 +127,13 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 				return
 			}
 
-			log.Debug().Str("AppID", app.ID).Msg("Terraform applied! Updating app status")
+			log.Info().Str("AppID", app.ID).Msg("Terraform applied! Saving outputs...")
 
 			err = utils.UpdateSingleEnvironmentStatus(app, env, "DESTROYED", mm, "")
 			if err != nil {
 				errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 				return
 			}
-
-			log.Debug().Str("AppID", app.ID).Msg("App status updated")
 			return
 		}(env)
 	}

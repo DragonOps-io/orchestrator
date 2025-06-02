@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/hashicorp/terraform-exec/tfexec"
-	"github.com/rs/zerolog/log"
 	"os"
 	"strings"
 	"time"
@@ -107,7 +106,6 @@ func getAllResourcesByGroupId(mm *magicmodel.Operator, groupID string) (*GroupRe
 
 func deleteResourcesFromDynamo(ctx context.Context, resources *GroupResources, mm *magicmodel.Operator, group types.Group, payload Payload, cfg aws.Config) error {
 	for _, cluster := range resources.Clusters {
-		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Deleting cluster %s record from DynamoDb.", cluster.Name))
 		o := mm.SoftDelete(&cluster)
 		if o.Err != nil {
 			return o.Err
@@ -116,7 +114,6 @@ func deleteResourcesFromDynamo(ctx context.Context, resources *GroupResources, m
 
 	for _, network := range resources.Networks {
 		client := ssm.NewFromConfig(cfg)
-		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Deleting network parameters for network %s.", network.Name))
 		_, err := client.DeleteParameters(ctx, &ssm.DeleteParametersInput{
 			Names: []string{
 				fmt.Sprintf("/%s/wireguard/public_key", network.ID),
@@ -144,7 +141,6 @@ func deleteResourcesFromDynamo(ctx context.Context, resources *GroupResources, m
 			}
 		}
 
-		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Deleting network %s record from DynamoDb.", network.Name))
 		o := mm.SoftDelete(&network)
 		if o.Err != nil {
 			return o.Err
@@ -152,7 +148,6 @@ func deleteResourcesFromDynamo(ctx context.Context, resources *GroupResources, m
 	}
 
 	for _, db := range resources.Rds {
-		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Deleting database %s record from DynamoDb.", db.Name))
 		o := mm.SoftDelete(&db)
 		if o.Err != nil {
 			return o.Err

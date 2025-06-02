@@ -8,7 +8,6 @@ import (
 	"github.com/DragonOps-io/types"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	r53Types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -30,82 +29,28 @@ var albZoneMap = map[string]string{
 }
 
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
-	log.Debug().
+	log.Info().
 		Str("AppID", payload.AppID).
-		Msg("Looking for app with matching ID")
+		Msg("Retrieving app with matching ID...")
 
 	app := types.App{}
 	o := mm.Find(&app, payload.AppID)
 	if o.Err != nil {
 		return fmt.Errorf("an error occurred when trying to find the app with id %s: %s", payload.AppID, o.Err)
 	}
-	log.Debug().Str("AppID", app.ID).Msg("Found app")
+
+	log.Info().Str("AppID", app.ID).Msg("Found app")
 
 	appEnvironmentsToApply := payload.EnvironmentNames
-	log.Debug().Str("AppID", app.ID).Msg("Retrieved environments to apply")
 
-	receiptHandle := os.Getenv("RECEIPT_HANDLE")
-	if receiptHandle == "" {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, fmt.Errorf("no RECEIPT_HANDLE variable found").Error())
-		if ue != nil {
-			return ue
-		}
-		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
-	}
-
-	var accounts []types.Account
-	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
-	if o.Err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, o.Err.Error())
-		if ue != nil {
-			return ue
-		}
-		return fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", o.Err)
-	}
-	log.Debug().Str("AppID", payload.AppID).Msg("Found Master Account")
-
-	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		config.WithRegion(accounts[0].AwsRegion)
-		return nil
-	})
+	masterAccount, cfg, err := utils.CommonStartupTasks(ctx, mm, payload.UserName)
 	if err != nil {
 		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, err.Error())
 		if ue != nil {
 			return ue
 		}
-		return err
+		return fmt.Errorf("error during common startup tasks: %v", err)
 	}
-
-	// get the doApiKey from secrets manager, not the payload
-	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
-	if err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, err.Error())
-		if ue != nil {
-			return ue
-		}
-		return err
-	}
-
-	authResponse, err := utils.IsApiKeyValid(*doApiKey)
-	if err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, err.Error())
-		if ue != nil {
-			return ue
-		}
-		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
-	}
-
-	if !authResponse.IsValid {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help").Error())
-		if ue != nil {
-			return ue
-		}
-		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-	}
-
-	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
-		o.Region = accounts[0].AwsRegion
-	})
 
 	if !isDryRun {
 		if os.Getenv("IS_LOCAL") == "true" {
@@ -114,7 +59,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "/app/tmpl.tgz.age")
 		}
 
-		log.Debug().Str("AppID", app.ID).Msg("Preparing Terraform")
+		log.Info().Str("AppID", app.ID).Msg("Preparing Terraform")
 
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
@@ -126,9 +71,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			return err
 		}
 
-		log.Debug().Str("AppID", app.ID).Msg("Dry run is false. Running terraform")
-
-		err = formatWithWorkerAndApply(ctx, accounts[0].AwsRegion, mm, app, appEnvironmentsToApply, execPath, &cfg)
+		err = formatWithWorkerAndApply(ctx, masterAccount.AwsRegion, mm, app, appEnvironmentsToApply, execPath, cfg)
 		if err != nil {
 			return err
 		}
@@ -137,8 +80,10 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	queueParts := strings.Split(*app.AppSqsArn, ":")
 	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
 
-	log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
-
+	sqsClient := sqs.NewFromConfig(*cfg, func(o *sqs.Options) {
+		o.Region = masterAccount.AwsRegion
+	})
+	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	_, err = sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      &queueUrl,
 		ReceiptHandle: &receiptHandle,
@@ -167,6 +112,10 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 			var roleToAssume *string
 			// TODO how does cross-account work with this new env stuff?
+			// For server/job apps, we can get the account from the cluster
+			// For serverless apps, we can get the account from the network IF it's in a vpc, otherwise we don't have any account information...
+			// For static apps, we don't have any of that information, just an environment name...
+
 			//if env.Group.Account.CrossAccountRoleArn != nil {
 			//	roleToAssume = env.Group.Account.CrossAccountRoleArn
 			//}
@@ -195,7 +144,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 				return
 			}
 
-			log.Debug().Str("AppID", app.ID).Msg("Terraform applied! Updating app status")
+			log.Info().Str("AppID", app.ID).Msg("Terraform applied! Saving outputs...")
 
 			err = handleAppEnvironmentOutputs(ctx, app, env, mm, out, awsCfg, albZoneMap)
 			o := mm.Save(&app)
@@ -210,7 +159,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 				return
 			}
 
-			log.Debug().Str("AppID", app.ID).Msg("App status updated")
+			log.Info().Str("AppID", app.ID).Msg("App updated!")
 			return
 		}(env)
 	}
@@ -254,7 +203,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 		//	return fmt.Errorf("Error for app with id %s and environment with id %s: %v", app.ID, env.ID, o.Err)
 		//}
 
-		//if !*accounts[0].IsMasterAccount {
+		//if !*masterAccount.IsMasterAccount {
 		//	// assume master account role arn
 		//	masterAcctStsClient := sts.NewFromConfig(*awsCfg)
 		//	masterAccountRoleOutput, err := masterAcctStsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
@@ -267,7 +216,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 		//	}
 		//
 		//	loadOptions := []func(options *config.LoadOptions) error{
-		//		config.WithRegion(accounts[0].AwsRegion),
+		//		config.WithRegion(masterAccount.AwsRegion),
 		//		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 		//			*masterAccountRoleOutput.Credentials.AccessKeyId,
 		//			*masterAccountRoleOutput.Credentials.SecretAccessKey,
@@ -325,7 +274,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 					return err
 				}
 			} else {
-				log.Debug().Str("AppID", appId).Msg(fmt.Sprintf("Overwrite is false, skipping update for domain: %s", r53Domains[di].DomainName))
+				log.Info().Str("AppID", appId).Msg(fmt.Sprintf("Overwrite is false, skipping update for domain: %s", r53Domains[di].DomainName))
 			}
 		} else {
 			_, err = dnsClient.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
@@ -152,7 +153,7 @@ func RunWorkerAppApply(mm *magicmodel.Operator, app types.App, appPath, envName,
 		command = fmt.Sprintf("./app/worker app apply --app-id %s --environment-name %s --table-region %s", app.ID, envName, masterAcctRegion)
 	}
 
-	log.Debug().Str("AppID", app.ID).Msg(fmt.Sprintf("Templating terraform application files for environment %s", envName))
+	log.Info().Str("AppID", app.ID).Msg(fmt.Sprintf("Templating terraform application files for environment %s", envName))
 	msg, err := RunOSCommandOrFail(command)
 	if err != nil {
 		ue := UpdateSingleEnvironmentStatus(app, envName, "APPLY_FAILED", mm, fmt.Errorf("Error running `worker app apply` with app with id %s and environment with name %s: %v - %v", app.ID, envName, err, msg).Error())
@@ -161,6 +162,45 @@ func RunWorkerAppApply(mm *magicmodel.Operator, app types.App, appPath, envName,
 		}
 		return fmt.Errorf("error running `worker app apply` with app with id %s and environment with name %s: %v - %v", app.ID, envName, err, msg)
 	}
-	log.Debug().Str("AppID", app.ID).Msg(*msg)
+	log.Info().Str("AppID", app.ID).Msg(*msg)
 	return nil
+}
+
+func CommonStartupTasks(ctx context.Context, mm *magicmodel.Operator, username string) (*types.Account, *aws.Config, error) {
+
+	receiptHandle := os.Getenv("RECEIPT_HANDLE")
+	if receiptHandle == "" {
+		return nil, nil, fmt.Errorf("error retrieving RECEIPT_HANDLE from queue. Cannot continue")
+	}
+
+	var accounts []types.Account
+	o := mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
+	if o.Err != nil {
+		return nil, nil, fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", o.Err)
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+		config.WithRegion(accounts[0].AwsRegion)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// get the doApiKey from secrets manager, not the payload
+	doApiKey, err := GetDoApiKeyFromSecretsManager(ctx, cfg, username)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	authResponse, err := IsApiKeyValid(*doApiKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
+	}
+
+	if !authResponse.IsValid {
+		return nil, nil, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help")
+	}
+	
+	return &accounts[0], &cfg, nil
 }

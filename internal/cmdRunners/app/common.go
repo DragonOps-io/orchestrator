@@ -9,6 +9,7 @@ import (
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/hashicorp/terraform-exec/tfexec"
+	"github.com/rs/zerolog/log"
 	"os"
 	"regexp"
 	"strings"
@@ -33,7 +34,6 @@ type Payload struct {
 func GetPayload() (*Payload, error) {
 	val, ok := os.LookupEnv("MESSAGE")
 	if !ok {
-		fmt.Printf("%s not set\n", "MESSAGE")
 		return nil, fmt.Errorf("%s not set\n", "MESSAGE")
 	}
 
@@ -55,20 +55,21 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 		// Extract app URL
 		var appUrl AppUrl
 		if err := json.Unmarshal(out["app_url"].Value, &appUrl); err != nil {
-			fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
+			log.Info().Str("AppID", app.ID).Msg(fmt.Sprintf("Error decoding output value for key app_url: %s\n", err.Error()))
 		}
+
 		envConfig.Endpoint = string(appUrl)
-		fmt.Println(envConfig.Endpoint)
+
 		switch app.SubType {
 		case "static":
 			var cfDistroID CloudfrontDistroID
 			if err := json.Unmarshal(out["cloudfront_distribution_id"].Value, &cfDistroID); err != nil {
-				fmt.Printf("Error decoding output value for key %s: %s\n", "cloudfront_distribution_id", err)
+				log.Info().Str("AppID", app.ID).Msg(fmt.Sprintf("Error decoding output value for key cloudfront_distribution_id: %s\n", err.Error()))
 			}
 
 			var cfDnsName string
 			if err := json.Unmarshal(out["cloudfront_dns_name"].Value, &cfDnsName); err != nil {
-				fmt.Printf("Error decoding output value for key %s: %s\n", "cloudfront_dns_name", err)
+				log.Info().Str("AppID", app.ID).Msg(fmt.Sprintf("Error decoding output value for key cloudfront_dns_name: %s\n", err.Error()))
 			}
 			envConfig.CloudfrontDistroID = string(cfDistroID)
 
@@ -82,12 +83,12 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 		case "serverless":
 			var apiGatewayDnsHostedZoneId string
 			if err := json.Unmarshal(out["api_gateway_dns_hosted_zone_id"].Value, &apiGatewayDnsHostedZoneId); err != nil {
-				fmt.Printf("Error decoding output value for key %s: %s\n", "api_gateway_dns_hosted_zone_id", err)
+				log.Info().Str("AppID", app.ID).Msg(fmt.Sprintf("Error decoding output value for key api_gateway_dns_hosted_zone_id: %s\n", err.Error()))
 			}
 
 			var apiGatewayDnsName string
 			if err := json.Unmarshal(out["api_gateway_dns_name"].Value, &apiGatewayDnsName); err != nil {
-				fmt.Printf("Error decoding output value for key %s: %s\n", "api_gateway_dns_name", err)
+				log.Info().Str("AppID", app.ID).Msg(fmt.Sprintf("Error decoding output value for key api_gateway_dns_name: %s\n", err.Error()))
 			}
 
 			err := handleRoute53Domains(envConfig.Route53DomainNames, apiGatewayDnsName, awsCfg, ctx, apiGatewayDnsHostedZoneId, app.ID)
@@ -95,12 +96,12 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, err.Error()); ue != nil {
 					return ue
 				}
-				return fmt.Errorf("Error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)
+				return fmt.Errorf("error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)
 			}
 		default:
 			var appDashboardUrl string
 			if err := json.Unmarshal(out["app_dashboard_url"].Value, &appDashboardUrl); err != nil {
-				fmt.Printf("Error decoding output value for key %s: %s\n", "app_dashboard_url", err)
+				log.Info().Str("AppID", app.ID).Msg(fmt.Sprintf("Error decoding output value for key app_dashboard_url: %s\n", err.Error()))
 			}
 
 			app.ObservabilityUrls = &types.ObservabilityUrls{
@@ -119,13 +120,13 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, o.Err.Error()); ue != nil {
 					return ue
 				}
-				return fmt.Errorf("Error finding cluster %s: %v", envConfig.Cluster, o.Err)
+				return fmt.Errorf("error finding cluster %s: %v", envConfig.Cluster, o.Err)
 			}
 			if len(clusters) == 0 {
 				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster).Error()); ue != nil {
 					return ue
 				}
-				return fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster)
+				return fmt.Errorf("no cluster found for resource label %s", envConfig.Cluster)
 			}
 			cluster = clusters[0]
 			err := handleRoute53Domains(envConfig.Route53DomainNames, cluster.AlbDnsName, awsCfg, ctx, albZoneMap[cluster.Group.Account.Region], app.ID)
@@ -133,11 +134,9 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, err.Error()); ue != nil {
 					return ue
 				}
-				return fmt.Errorf("Error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)
+				return fmt.Errorf("error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)
 			}
 		}
-
-		// write it back into the map
 		app.Environments[envKey] = envConfig
 	}
 
