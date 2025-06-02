@@ -3,6 +3,9 @@ package utils
 import (
 	"context"
 	"fmt"
+	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	"os"
@@ -109,4 +112,95 @@ func GetDoApiKeyFromSecretsManager(ctx context.Context, cfg aws.Config, userName
 		return nil, err
 	}
 	return resp.SecretString, err
+}
+
+func UpdateAllEnvironmentStatuses(app types.App, environmentsToUpdate []string, status string, mm *magicmodel.Operator, errMsg string) error {
+	for _, envName := range environmentsToUpdate {
+		if env, ok := app.Environments[envName]; ok {
+			env.Status = status
+			env.FailedReason = errMsg
+			app.Environments[envName] = env
+		}
+	}
+
+	aco := mm.Update(&app, "Environments", app.Environments)
+	if aco.Err != nil {
+		return aco.Err
+	}
+	return nil
+}
+
+func UpdateSingleEnvironmentStatus(app types.App, envName, status string, mm *magicmodel.Operator, errMsg string) error {
+	if appEnv, exists := app.Environments[envName]; exists {
+		appEnv.Status = status
+		appEnv.FailedReason = errMsg
+		app.Environments[envName] = appEnv
+		aco := mm.Update(&app, "Environments", app.Environments)
+		if aco.Err != nil {
+			return aco.Err
+		}
+	}
+	return nil
+}
+
+func RunWorkerAppApply(mm *magicmodel.Operator, app types.App, appPath, envName, masterAcctRegion string) error {
+	command := fmt.Sprintf("/app/worker app apply --app-id %s --environment-name %s --table-region %s", app.ID, envName, masterAcctRegion)
+	os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", appPath)
+
+	if os.Getenv("IS_LOCAL") == "true" {
+		appPath = fmt.Sprintf("./apps/%s/%s", app.ID, envName)
+		os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", appPath)
+		command = fmt.Sprintf("./app/worker app apply --app-id %s --environment-name %s --table-region %s", app.ID, envName, masterAcctRegion)
+	}
+
+	log.Info().Str("AppID", app.ID).Msg(fmt.Sprintf("Templating terraform application files for environment %s", envName))
+	msg, err := RunOSCommandOrFail(command)
+	if err != nil {
+		ue := UpdateSingleEnvironmentStatus(app, envName, "APPLY_FAILED", mm, fmt.Errorf("Error running `worker app apply` with app with id %s and environment with name %s: %v - %v", app.ID, envName, err, msg).Error())
+		if ue != nil {
+			return ue
+		}
+		return fmt.Errorf("error running `worker app apply` with app with id %s and environment with name %s: %v - %v", app.ID, envName, err, msg)
+	}
+	log.Info().Str("AppID", app.ID).Msg(*msg)
+	return nil
+}
+
+func CommonStartupTasks(ctx context.Context, mm *magicmodel.Operator, username string) (*types.Account, *aws.Config, error) {
+
+	receiptHandle := os.Getenv("RECEIPT_HANDLE")
+	if receiptHandle == "" {
+		return nil, nil, fmt.Errorf("error retrieving RECEIPT_HANDLE from queue. Cannot continue")
+	}
+
+	var accounts []types.Account
+	o := mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
+	if o.Err != nil {
+		return nil, nil, fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", o.Err)
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
+		config.WithRegion(accounts[0].AwsRegion)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// get the doApiKey from secrets manager, not the payload
+	doApiKey, err := GetDoApiKeyFromSecretsManager(ctx, cfg, username)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	authResponse, err := IsApiKeyValid(*doApiKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
+	}
+
+	if !authResponse.IsValid {
+		return nil, nil, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help")
+	}
+	
+	return &accounts[0], &cfg, nil
 }
