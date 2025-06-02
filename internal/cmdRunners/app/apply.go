@@ -323,6 +323,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 					return err
 				}
 			}
+			fmt.Println("Overwrite is false, skipping update for domain:", r53Domains[di].DomainName)
 		} else {
 			_, err = dnsClient.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
 				ChangeBatch: &r53Types.ChangeBatch{
