@@ -291,19 +291,17 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 			return err
 		}
 		if foundRecord != nil {
-			fmt.Println(cfOrAlbDnsName)
-			fmt.Println(cfOrAlbZoneId)
+			// trim https in case of serverless api gateway
+			cfOrAlbDnsName = strings.TrimPrefix(cfOrAlbDnsName, "https://")
+
 			// update the record but only if overwrite is true
 			if r53Domains[di].Overwrite != nil && *r53Domains[di].Overwrite {
-				fmt.Println("Found existing A record for domain:", r53Domains[di].DomainName)
 				if foundRecord.Type == r53Types.RRTypeA {
 					foundRecord.AliasTarget = &r53Types.AliasTarget{
 						DNSName:      &cfOrAlbDnsName,
 						HostedZoneId: &cfOrAlbZoneId,
 					}
 				} else if foundRecord.Type == r53Types.RRTypeCname {
-					fmt.Println("Found existing CNAME record for domain:", r53Domains[di].DomainName)
-
 					foundRecord.ResourceRecords = []r53Types.ResourceRecord{
 						{
 							Value: &cfOrAlbDnsName,
@@ -312,7 +310,6 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 				} else {
 					return fmt.Errorf("unsupported record type %s for domain %s", foundRecord.Type, r53Domains[di].DomainName)
 				}
-
 				_, err = dnsClient.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
 					ChangeBatch: &r53Types.ChangeBatch{
 						Changes: []r53Types.Change{
@@ -325,11 +322,10 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 					HostedZoneId: r53Domains[di].HostedZoneId,
 				})
 				if err != nil {
-					fmt.Println(err)
 					return err
 				}
 			} else {
-				fmt.Println("Overwrite is false, skipping update for domain:", r53Domains[di].DomainName)
+				log.Debug().Str("AppID", appId).Msg(fmt.Sprintf("Overwrite is false, skipping update for domain: %s", r53Domains[di].DomainName))
 			}
 		} else {
 			_, err = dnsClient.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
@@ -351,7 +347,6 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 				HostedZoneId: r53Domains[di].HostedZoneId,
 			})
 			if err != nil {
-				fmt.Println(err)
 				return err
 			}
 		}
