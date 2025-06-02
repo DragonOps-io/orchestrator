@@ -74,6 +74,7 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 
 			err := handleRoute53Domains(envConfig.Route53DomainNames, cfDnsName, awsCfg, ctx, "Z2FDTNDATAQYW2", app.ID)
 			if err != nil {
+				fmt.Println(err)
 				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, err.Error()); ue != nil {
 					return ue
 				}

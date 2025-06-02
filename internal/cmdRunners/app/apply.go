@@ -291,14 +291,19 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 			return err
 		}
 		if foundRecord != nil {
+			fmt.Println(cfOrAlbDnsName)
+			fmt.Println(cfOrAlbZoneId)
 			// update the record but only if overwrite is true
 			if r53Domains[di].Overwrite != nil && *r53Domains[di].Overwrite {
+				fmt.Println("Found existing A record for domain:", r53Domains[di].DomainName)
 				if foundRecord.Type == r53Types.RRTypeA {
 					foundRecord.AliasTarget = &r53Types.AliasTarget{
 						DNSName:      &cfOrAlbDnsName,
 						HostedZoneId: &cfOrAlbZoneId,
 					}
 				} else if foundRecord.Type == r53Types.RRTypeCname {
+					fmt.Println("Found existing CNAME record for domain:", r53Domains[di].DomainName)
+
 					foundRecord.ResourceRecords = []r53Types.ResourceRecord{
 						{
 							Value: &cfOrAlbDnsName,
@@ -320,10 +325,12 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 					HostedZoneId: r53Domains[di].HostedZoneId,
 				})
 				if err != nil {
+					fmt.Println(err)
 					return err
 				}
+			} else {
+				fmt.Println("Overwrite is false, skipping update for domain:", r53Domains[di].DomainName)
 			}
-			fmt.Println("Overwrite is false, skipping update for domain:", r53Domains[di].DomainName)
 		} else {
 			_, err = dnsClient.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
 				ChangeBatch: &r53Types.ChangeBatch{
@@ -344,6 +351,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 				HostedZoneId: r53Domains[di].HostedZoneId,
 			})
 			if err != nil {
+				fmt.Println(err)
 				return err
 			}
 		}
