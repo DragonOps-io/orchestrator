@@ -58,7 +58,7 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 			fmt.Printf("Error decoding output value for key %s: %s\n", "app_url", err)
 		}
 		envConfig.Endpoint = string(appUrl)
-
+		fmt.Println(envConfig.Endpoint)
 		switch app.SubType {
 		case "static":
 			var cfDistroID CloudfrontDistroID
@@ -79,7 +79,7 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 				}
 			}
 		case "serverless":
-
+			fmt.Println("serverless app")
 			var apiGatewayDnsHostedZoneId string
 			if err := json.Unmarshal(out["api_gateway_dns_hosted_zone_id"].Value, &apiGatewayDnsHostedZoneId); err != nil {
 				fmt.Printf("Error decoding output value for key %s: %s\n", "api_gateway_dns_hosted_zone_id", err)
@@ -97,6 +97,7 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 				}
 				return fmt.Errorf("Error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)
 			}
+			fmt.Println("created route53 domains i think")
 		default:
 			var appDashboardUrl string
 			if err := json.Unmarshal(out["app_dashboard_url"].Value, &appDashboardUrl); err != nil {
