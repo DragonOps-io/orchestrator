@@ -77,6 +77,7 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 				if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, "APPLY_FAILED", mm, err.Error()); ue != nil {
 					return ue
 				}
+				return fmt.Errorf("Error handling route53 domains for app with id %s and environment with name %s: %v", app.ID, envKey, err)
 			}
 		case "serverless":
 			fmt.Println("serverless app")
