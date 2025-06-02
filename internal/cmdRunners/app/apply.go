@@ -304,6 +304,8 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 							Value: &cfOrAlbDnsName,
 						},
 					}
+				} else {
+					return fmt.Errorf("unsupported record type %s for domain %s", foundRecord.Type, r53Domains[di].DomainName)
 				}
 
 				_, err = dnsClient.ChangeResourceRecordSets(ctx, &route53.ChangeResourceRecordSetsInput{
