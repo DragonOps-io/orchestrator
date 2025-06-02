@@ -9,7 +9,9 @@ import (
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+
 	"github.com/rs/zerolog/log"
 	"os"
 	"strings"
@@ -133,11 +135,29 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 	if err != nil {
 		return err
 	}
-	// TODO delete the ECR Repo/images, OIDC repo entry from policy
+	// TODO OIDC repo entry from policy
+
+	ecrClient := ecr.NewFromConfig(cfg)
+
+	err = DeleteECRRepository(ctx, ecrClient, app.Name, true)
+	if err != nil {
+		return err
+	}
 
 	o = mm.SoftDelete(&app)
 	if o.Err != nil {
 		return o.Err
+	}
+	return nil
+}
+
+func DeleteECRRepository(ctx context.Context, client *ecr.Client, repoName string, force bool) error {
+	_, err := client.DeleteRepository(ctx, &ecr.DeleteRepositoryInput{
+		RepositoryName: aws.String(repoName),
+		Force:          force, // true allows deletion even if images exist
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete ECR repo %q: %w", repoName, err)
 	}
 	return nil
 }
