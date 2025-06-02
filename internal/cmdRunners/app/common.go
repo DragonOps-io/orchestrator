@@ -79,30 +79,6 @@ func handleAppEnvironmentOutputs(ctx context.Context, app types.App, envKey stri
 				}
 			}
 		case "serverless":
-			// TODO lambda outputs
-			//if envConfig.Network != "" {
-			//	var network types.Network
-			//	var re = regexp.MustCompile(`^[^\s.]+\.([^\s.]+)$`)
-			//	isValidFormat := re.MatchString(envConfig.Network)
-			//	if !isValidFormat {
-			//		return fmt.Errorf("error validating networks in application %s in environment %s: networks defined must have a group and cluster resource label, sparaterd by a `.`, ie: group_resource_label.network_resource_label", app.Name, envKey)
-			//	}
-			//	var networks []types.Network
-			//	o := mm.WhereV2(true, &networks, "Group.ResourceLabel", strings.Split(envConfig.Network, ".")[0]).WhereV2(false, &networks, "ResourceLabel", strings.Split(envConfig.Network, ".")[1])
-			//	if o.Err != nil {
-			//		if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, mm, o.Err); ue != nil {
-			//			return ue
-			//		}
-			//		return fmt.Errorf("Error finding cluster %s: %v", envConfig.Cluster, o.Err)
-			//	}
-			//	if len(networks) == 0 {
-			//		if ue := utils.UpdateSingleEnvironmentStatus(app, envKey, mm, fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster)); ue != nil {
-			//			return ue
-			//		}
-			//		return fmt.Errorf("No cluster found for resource label %s", envConfig.Cluster)
-			//	}
-			//	network = networks[0]
-			//}
 
 			var apiGatewayDnsHostedZoneId string
 			if err := json.Unmarshal(out["api_gateway_dns_hosted_zone_id"].Value, &apiGatewayDnsHostedZoneId); err != nil {
