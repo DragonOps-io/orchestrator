@@ -88,8 +88,6 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	queueParts := strings.Split(group.Account.GroupSqsArn, ":")
 	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
 
-	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
-
 	sqsClient := sqs.NewFromConfig(*cfg, func(o *sqs.Options) {
 		o.Region = masterAccount.AwsRegion
 	})
@@ -104,31 +102,27 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	return nil
 }
 
-type Resources struct {
-	Data map[string][]string
-}
-
 func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config, payload Payload, masterAccount types.Account) error {
-	msg, err := runWorkerResourcesList(group, mm, payload.JobId)
+	msg, err := utils.RunWorkerResourcesList(group, payload.JobId)
 	if err != nil {
 		// TODO
 		return err
 	}
 
 	terraformDirectoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), fmt.Sprintf("group/%s", group.ResourceLabel))
-	var resources Resources
+	var resources utils.Resources
 	err = json.Unmarshal([]byte(*msg), &resources.Data)
 	if err != nil {
 		// TODO
 		return err
 	}
 
-	allResourcesToDelete, err := getAllResourcesToDeleteByGroupId(mm, group.ID)
+	allResourcesToDelete, err := utils.GetAllResourcesToDeleteByGroupId(mm, group.ID)
 	if err != nil {
 		return fmt.Errorf("error retrieving resources to delete: %v", err)
 	}
 
-	terraformResourcesToDelete := getExactTerraformResourceNames(allResourcesToDelete, resources)
+	terraformResourcesToDelete := utils.GetExactTerraformResourceNames(allResourcesToDelete, resources)
 
 	if len(terraformResourcesToDelete) > 0 {
 		err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)

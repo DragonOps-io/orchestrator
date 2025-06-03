@@ -133,8 +133,8 @@ func saveClusterOutputs(mm *magicmodel.Operator, cluster types.Cluster, outputs 
 	return nil
 }
 
-func saveRdsOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, rds types.Rds, cfg aws.Config) error {
-	suffix := "_" + rds.ResourceLabel
+func saveDatabaseOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMeta, database types.Database, cfg aws.Config) error {
+	suffix := "_" + database.ResourceLabel
 	var secretArray []map[string]interface{}
 	var secretArn string
 
@@ -148,7 +148,7 @@ func saveRdsOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMet
 
 		switch baseKey {
 		case "rds_endpoint":
-			if err := types.UnmarshalWithErrorDetails(output.Value, &rds.Endpoint); err != nil {
+			if err := types.UnmarshalWithErrorDetails(output.Value, &database.Endpoint); err != nil {
 				return fmt.Errorf("unmarshal endpoint: %w", err)
 			}
 		case "cluster_master_user_secret":
@@ -172,12 +172,12 @@ func saveRdsOutputs(mm *magicmodel.Operator, outputs map[string]tfexec.OutputMet
 			if err != nil {
 				return fmt.Errorf("unmarshal username_and_password fail: %w", err)
 			}
-			rds.MasterUserSecretArn = secretArn
-			rds.MasterUserPassword = *out.SecretString
+			database.MasterUserSecretArn = secretArn
+			database.MasterUserPassword = *out.SecretString
 		}
 	}
 
-	o := mm.Save(&rds)
+	o := mm.Save(&database)
 	if o.Err != nil {
 		return o.Err
 	}
