@@ -2,7 +2,6 @@ package group
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
@@ -103,48 +102,41 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 }
 
 func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config, payload Payload, masterAccount types.Account) error {
-	msg, err := utils.RunWorkerResourcesList(group, payload.JobId)
-	if err != nil {
-		// TODO
-		return err
-	}
+	//msg, err := utils.RunWorkerResourcesList(group, payload.JobId)
+	//if err != nil {
+	//	// TODO
+	//	return err
+	//}
 
 	terraformDirectoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), fmt.Sprintf("group/%s", group.ResourceLabel))
-	var resources utils.Resources
-	err = json.Unmarshal([]byte(*msg), &resources.Data)
-	if err != nil {
-		// TODO
-		return err
-	}
+	//var resources utils.Resources
+	//err = json.Unmarshal([]byte(*msg), &resources.Data)
+	//if err != nil {
+	//	// TODO
+	//	return err
+	//}
 
-	allResourcesToDelete, err := utils.GetAllResourcesToDeleteByGroupId(mm, group.ID)
-	if err != nil {
-		return fmt.Errorf("error retrieving resources to delete: %v", err)
-	}
+	//
+	//terraformResourcesToDelete := utils.GetExactTerraformResourceNames(allResourcesToDelete, resources)
+	//
+	//if len(terraformResourcesToDelete) > 0 {
+	//	err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
+	//	if err != nil {
+	//		// TODO
+	//		return err
+	//	}
+	//
+	//	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Destroying resources removed from config...")
+	//	err = terraform.DestroyTerraformTargets(ctx, terraformDirectoryPath, *execPath, terraformResourcesToDelete, roleToAssume)
+	//	if err != nil {
+	//		return fmt.Errorf("error destroying resources with terraform targeting: %v", err)
+	//	}
+	//
 
-	terraformResourcesToDelete := utils.GetExactTerraformResourceNames(allResourcesToDelete, resources)
-
-	if len(terraformResourcesToDelete) > 0 {
-		err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
-		if err != nil {
-			// TODO
-			return err
-		}
-
-		log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Destroying resources removed from config...")
-		err = terraform.DestroyTerraformTargets(ctx, terraformDirectoryPath, *execPath, terraformResourcesToDelete, roleToAssume)
-		if err != nil {
-			return fmt.Errorf("error destroying resources with terraform targeting: %v", err)
-		}
-
-		err = deleteGroupResources(mm, allResourcesToDelete)
-		if err != nil {
-			return fmt.Errorf("error deleting resources from dynamo: %v", err)
-		}
-	}
+	//}
 
 	// template with worker a second time, now that resources are destroyed
-	err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
+	err := runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
 	if err != nil {
 		return fmt.Errorf("error templating terraform: %v", err)
 	}
@@ -154,6 +146,17 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	if err != nil {
 		return fmt.Errorf("error applying terraform: %v", err)
 
+	}
+
+	// After successful apply, delete resources that are no longer needed
+	allResourcesToDelete, err := utils.GetAllResourcesToDeleteByGroupId(mm, group.ID)
+	if err != nil {
+		return fmt.Errorf("error retrieving resources to delete: %v", err)
+	}
+
+	err = deleteGroupResources(mm, allResourcesToDelete)
+	if err != nil {
+		return fmt.Errorf("error deleting resources from dynamo: %v", err)
 	}
 
 	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Saving terraform outputs...")
