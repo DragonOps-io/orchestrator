@@ -135,7 +135,8 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 	//}
 
-	// template with worker a second time, now that resources are destroyed
+	//// template with worker a second time, now that resources are destroyed
+
 	err := runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
 	if err != nil {
 		return fmt.Errorf("error templating terraform: %v", err)
