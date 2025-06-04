@@ -176,6 +176,7 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 
 	terraformDirectoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), fmt.Sprintf("group/%s", group.ResourceLabel))
 
+	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Running terraform destroy...")
 	_, err = terraform.DestroyTerraform(ctx, terraformDirectoryPath, *execPath, roleToAssume)
 	if err != nil {
 		return err
