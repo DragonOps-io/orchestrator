@@ -188,7 +188,6 @@ func CommonStartupTasks(ctx context.Context, mm *magicmodel.Operator, username s
 		return nil, nil, err
 	}
 
-	// get the doApiKey from secrets manager, not the payload
 	doApiKey, err := GetDoApiKeyFromSecretsManager(ctx, cfg, username)
 	if err != nil {
 		return nil, nil, err
