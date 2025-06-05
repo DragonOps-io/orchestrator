@@ -2,6 +2,7 @@ package terraform
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -30,10 +31,15 @@ func GenerateKubeconfig(ctx context.Context, cfg aws.Config, clusterName, region
 	}
 	cluster := out.Cluster
 
+	decodedCA, err := base64.StdEncoding.DecodeString(*cluster.CertificateAuthority.Data)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode CA data: %w", err)
+	}
+
 	kubeConfig := clientcmdapi.NewConfig()
 	kubeConfig.Clusters[clusterName] = &clientcmdapi.Cluster{
 		Server:                   aws.ToString(cluster.Endpoint),
-		CertificateAuthorityData: []byte(*cluster.CertificateAuthority.Data),
+		CertificateAuthorityData: decodedCA,
 	}
 	kubeConfig.AuthInfos[clusterName] = &clientcmdapi.AuthInfo{
 		Exec: &clientcmdapi.ExecConfig{
