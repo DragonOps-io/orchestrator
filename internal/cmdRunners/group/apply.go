@@ -139,14 +139,12 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 	//}
 
-	// template with worker a second time, now that resources are destroyed
-
 	err := runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
 	if err != nil {
 		return fmt.Errorf("error templating terraform: %v", err)
 	}
 
-	// generate KUBECONFIG per cluster
+	// generate KUBECONFIG per cluster - used in null_resources to verify ordering
 	clusters, err := utils.GetAllClustersByGroupId(mm, group.ID)
 	if err != nil {
 		return err
