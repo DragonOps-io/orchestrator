@@ -2,8 +2,6 @@ FROM 851725405730.dkr.ecr.us-east-1.amazonaws.com/dev-worker:latest as worker
 
 FROM alpine:3.18.3
 
-ENV KUBECTL_VERSION=1.33.1
-
 WORKDIR /app
 RUN apk add --no-cache curl bash git age aws-cli wireguard-tools rsync \
       &&  curl -L --output kubectl "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
