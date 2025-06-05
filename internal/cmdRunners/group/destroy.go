@@ -162,6 +162,19 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 
 	terraformDirectoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), fmt.Sprintf("group/%s", group.ResourceLabel))
 
+	// generate KUBECONFIG per cluster - used in null_resources to verify ordering
+	clusters, err := utils.GetAllClustersByGroupId(mm, group.ID)
+	if err != nil {
+		return err
+	}
+	for _, cluster := range clusters {
+		cluster.StackName = fmt.Sprintf("%s-%s", cluster.Group.Name, cluster.Name)
+		_, err = terraform.GenerateKubeconfig(ctx, cfg, cluster.StackName, masterAcctRegion)
+		if err != nil {
+			return err
+		}
+	}
+
 	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Running terraform destroy...")
 	_, err = terraform.DestroyTerraform(ctx, terraformDirectoryPath, *execPath, roleToAssume)
 	if err != nil {
