@@ -6,9 +6,10 @@ ENV KUBECTL_VERSION=1.33.1
 
 WORKDIR /app
 RUN apk add --no-cache curl bash git age aws-cli wireguard-tools rsync \
-      && curl -LO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl" \
+      && curl -LO --output kubectl "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl" \
       && chmod +x kubectl \
-      && mv kubectl /usr/local/bin/
+      && mv kubectl /usr/local/bin/ \
+      && kubectl version --client
 
 COPY orchestrator .
 COPY --from=worker /app/worker .

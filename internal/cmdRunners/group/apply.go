@@ -120,7 +120,6 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	//	// TODO
 	//	return err
 	//}
-
 	//
 	//terraformResourcesToDelete := utils.GetExactTerraformResourceNames(allResourcesToDelete, resources)
 	//
@@ -145,6 +144,19 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	err := runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
 	if err != nil {
 		return fmt.Errorf("error templating terraform: %v", err)
+	}
+
+	// generate KUBECONFIG per cluster
+	clusters, err := utils.GetAllClustersByGroupId(mm, group.ID)
+	if err != nil {
+		return err
+	}
+	for _, cluster := range clusters {
+		cluster.StackName = fmt.Sprintf("%s-%s", cluster.Group.Name, cluster.Name)
+		_, err = terraform.GenerateKubeconfig(ctx, cfg, cluster.StackName, masterAcctRegion)
+		if err != nil {
+			return err
+		}
 	}
 
 	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Applying terraform...")

@@ -248,6 +248,15 @@ func GetAllResourcesToDeleteByGroupId(mm *magicmodel.Operator, groupID string) (
 	return &resources, nil
 }
 
+func GetAllClustersByGroupId(mm *magicmodel.Operator, groupID string) ([]types.Cluster, error) {
+	var clusters []types.Cluster
+	o := mm.WhereV3(false, &clusters, "Group.ID", groupID)
+	if o.Err != nil {
+		return nil, o.Err
+	}
+	return clusters, nil
+}
+
 func GetExactTerraformResourceNames(allResourcesToDelete *GroupResources, resources Resources) []string {
 	var terraformResourcesToDelete []string
 	for _, network := range allResourcesToDelete.Networks {
