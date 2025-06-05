@@ -48,20 +48,6 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		roleToAssume = group.Account.CrossAccountRoleArn
 	}
 
-	// TODO: Not sure what this is needed for
-	//if roleToAssume != nil {
-	//	cfg, err = getCrossAccountConfig(ctx, *cfg, *roleToAssume, group.Account.AwsAccountId, group.Account.Region)
-	//	if err != nil {
-	//		group.Status = "DESTROY_FAILED"
-	//		group.FailedReason = err.Error()
-	//		so := mm.Save(&group)
-	//		if so.Err != nil {
-	//			return so.Err
-	//		}
-	//		return err
-	//	}
-	//}
-
 	if !isDryRun {
 		if os.Getenv("IS_LOCAL") == "true" {
 			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", fmt.Sprintf("./groups/%s", group.ID))
