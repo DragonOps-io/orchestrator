@@ -102,6 +102,11 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 }
 
 func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config, payload Payload, masterAccount types.Account) error {
+	// When this doesn't work:
+	// * When a cluster is deleted but the subnets / vpc / something else isn't - we end up in a broken state where
+	// the provider data resources for the cluster auth and cluster details fail because the cluster doesn't exist anymore.
+	// We could add an API call in the worker to see if the cluster exists maybe, then delete provision based on that...
+
 	//msg, err := utils.RunWorkerResourcesList(group, payload.JobId)
 	//if err != nil {
 	//	// TODO
