@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
+	"github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/hc-install/product"
 	"github.com/hashicorp/hc-install/releases"
@@ -27,7 +28,14 @@ func GenerateKubeconfig(ctx context.Context, cfg aws.Config, clusterName, region
 		Name: aws.String(clusterName),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to describe EKS cluster %s: %w", clusterName, err)
+		var notFoundErr *types.ResourceNotFoundException
+		if errors.As(err, &notFoundErr) {
+			// This is the "not found" error
+			return "", nil
+		}
+
+		// Other error
+		return "", fmt.Errorf("failed to describe cluster: %w", err)
 	}
 	cluster := out.Cluster
 
