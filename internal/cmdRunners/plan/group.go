@@ -4,154 +4,37 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/DragonOps-io/orchestrator/internal/terraform"
 	"github.com/DragonOps-io/orchestrator/internal/utils"
 	"github.com/DragonOps-io/types"
 	magicmodel "github.com/Ilios-LLC/magicmodel-go/model"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/rs/zerolog/log"
 )
 
 func GroupPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) error {
-	log.Debug().
+	log.Info().
 		Str("GroupID", payload.GroupID).
-		Str("JobId", payload.JobId).
-		Msg("Looking for group with matching ID")
-	// todo should save status of current group and then readdply it?
-	// for example, fi the status is APPLY_FAILED, then we PLAN, we kind of want the status to go back to APPLY_FAILED, not APPLIED
+		Msg("Retrieving group...")
+
 	group := types.Group{}
 	o := mm.Find(&group, payload.GroupID)
 	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", payload.GroupID).Str("JobId", payload.JobId).Msg("Error finding group")
-		return fmt.Errorf("Error when trying to retrieve group with id %s: %s", payload.GroupID, o.Err)
-	}
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Found group")
-
-	receiptHandle := os.Getenv("RECEIPT_HANDLE")
-	if receiptHandle == "" {
-		log.Err(fmt.Errorf("no RECEIPT_HANDLE variable found")).Str("GroupID", group.ID).Msg("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&group, "FailedReason", "No RECEIPT_HANDLE variable found.")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		return fmt.Errorf("Error retrieving RECEIPT_HANDLE from queue. Cannot continue.")
+		return fmt.Errorf("error when trying to retrieve group with id %s: %s", payload.GroupID, o.Err)
 	}
 
-	var accounts []types.Account
-	o = mm.Where(&accounts, "IsMasterAccount", aws.Bool(true))
-	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&group, "FailedReason", o.Err.Error())
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		return fmt.Errorf("an error occurred when trying to find the MasterAccount: %s", aco.Err)
-	}
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Found MasterAccount")
-
-	cfg, err := config.LoadDefaultConfig(ctx, func(options *config.LoadOptions) error {
-		config.WithRegion(accounts[0].AwsRegion)
-		return nil
-	})
+	masterAccount, cfg, err := utils.CommonStartupTasks(ctx, mm, payload.UserName)
 	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
+		group.Status = "APPLY_FAILED"
+		group.FailedReason = err.Error()
+		so := mm.Save(&group)
+		if so.Err != nil {
+			return so.Err
 		}
-		aco = mm.Update(&group, "FailedReason", err.Error())
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		return err
-	}
-	// get the doApiKey from secrets manager, not the payload
-	doApiKey, err := utils.GetDoApiKeyFromSecretsManager(ctx, cfg, payload.UserName)
-	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&group, "FailedReason", err.Error())
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		return err
-	}
-
-	authResponse, err := utils.IsApiKeyValid(*doApiKey)
-	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&group, "FailedReason", err.Error())
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		return fmt.Errorf("error verifying validity of DragonOps Api Key: %v", err)
-	}
-
-	if !authResponse.IsValid {
-		log.Err(fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")).Str("GroupID", group.ID).Msg("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-		aco := mm.Update(&group, "Status", "APPLY_FAILED")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		aco = mm.Update(&group, "FailedReason", "The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-		if aco.Err != nil {
-			log.Err(aco.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(aco.Err.Error())
-			return aco.Err
-		}
-		return fmt.Errorf("The DragonOps api key provided is not valid. Please reach out to DragonOps support for help.")
-	}
-
-	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
-		o.Region = accounts[0].AwsRegion
-	})
-
-	var groupClusters []types.Cluster
-	o = mm.Where(&groupClusters, "Group.ID", group.ID)
-	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
-		po := mm.Update(&group, "Status", "APPLY_FAILED")
-		if po.Err != nil {
-			log.Err(po.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(po.Err.Error())
-			return po.Err
-		}
-		po = mm.Update(&group, "FailedReason", o.Err.Error())
-		if po.Err != nil {
-			log.Err(po.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(po.Err.Error())
-			return po.Err
-		}
-		return o.Err
+		return fmt.Errorf("error during common startup tasks: %v", err)
 	}
 
 	if os.Getenv("IS_LOCAL") == "true" {
@@ -168,218 +51,262 @@ func GroupPlan(ctx context.Context, payload Payload, mm *magicmodel.Operator) er
 	}
 
 	var execPath *string
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Preparing Terraform")
 	execPath, err = terraform.PrepareTerraform(ctx)
 	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
-		o = mm.Update(&group, "Status", "APPLY_FAILED")
-		if o.Err != nil {
-			log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
-			return o.Err
-		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
-			return o.Err
+		group.Status = "APPLY_FAILED"
+		group.FailedReason = err.Error()
+		so := mm.Save(&group)
+		if so.Err != nil {
+			return so.Err
 		}
 		return err
 	}
 
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Region for magic model is: %s", accounts[0].AwsRegion))
-	err = formatWithWorkerAndPlan(ctx, cfg, accounts[0].AwsRegion, *accounts[0].StateBucketName, mm, group, execPath, roleToAssume, payload.PlanId, payload)
+	err = formatWithWorkerAndPlanGroup(ctx, *cfg, masterAccount.AwsRegion, *masterAccount.StateBucketName, mm, group, execPath, roleToAssume, payload.PlanId, payload)
 	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
-		o = mm.Update(&group, "Status", "APPLY_FAILED")
-		if o.Err != nil {
-			log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
-			return o.Err
-		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
-			return o.Err
+		group.Status = "APPLY_FAILED"
+		group.FailedReason = err.Error()
+		so := mm.Save(&group)
+		if so.Err != nil {
+			return so.Err
 		}
 		return err
 	}
 
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Updating group status")
-	o = mm.Update(&group, "Status", "APPLIED")
+	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Updating group status")
+	group.Status = "APPLIED"
+	group.FailedReason = ""
+	o = mm.Save(&group)
 	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
-		return o.Err
-	}
-	o = mm.Update(&group, "FailedReason", "")
-	if o.Err != nil {
-		log.Err(o.Err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return o.Err
 	}
 
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Finished planning group!")
+	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Finished planning group!")
 	queueParts := strings.Split(group.Account.GroupSqsArn, ":")
 	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
 
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Queue url is %s", queueUrl))
-
+	sqsClient := sqs.NewFromConfig(*cfg, func(o *sqs.Options) {
+		o.Region = masterAccount.AwsRegion
+	})
+	receiptHandle := os.Getenv("RECEIPT_HANDLE")
 	_, err = sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      &queueUrl,
 		ReceiptHandle: &receiptHandle,
 	})
 	if err != nil {
-		log.Err(err).Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(err.Error())
 		return err
 	}
 	return nil
 }
 
-func formatWithWorkerAndPlan(ctx context.Context, awsCfg aws.Config, masterAcctRegion string, stateBucketName string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, planId string, payload Payload) error {
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Templating Terraform with correct values")
+func formatWithWorkerAndPlanGroup(ctx context.Context, awsCfg aws.Config, masterAcctRegion string, stateBucketName string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, planId string, payload Payload) error {
+	//msg, err := utils.RunWorkerResourcesList(group, payload.JobId)
+	//if err != nil {
+	//	// TODO
+	//	return err
+	//}
+	//
+	//terraformDirectoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), fmt.Sprintf("group/%s", group.ResourceLabel))
+	//var resources utils.Resources
+	//err = json.Unmarshal([]byte(*msg), &resources.Data)
+	//if err != nil {
+	//	// TODO
+	//	return err
+	//}
+	//
+	//allResourcesToDelete, err := utils.GetAllResourcesToDeleteByGroupId(mm, group.ID)
+	//if err != nil {
+	//	return fmt.Errorf("error retrieving resources to delete: %v", err)
+	//}
+	//
+	//terraformResourcesToDelete := utils.GetExactTerraformResourceNames(allResourcesToDelete, resources)
 
-	command := fmt.Sprintf("/app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
-	if os.Getenv("IS_LOCAL") == "true" {
-		command = fmt.Sprintf("./app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
-	}
+	//if len(terraformResourcesToDelete) > 0 {
+	//	err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
+	//	if err != nil {
+	//		// TODO
+	//		return err
+	//	}
+	//
+	//	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Destroying resources removed from config...")
+	//	err = terraform.PlanGroupTerraformWithDestroyTargets(ctx, *cfg, "", "bucketName", terraformDirectoryPath, *execPath, terraformResourcesToDelete, roleToAssume)
+	//	if err != nil {
+	//		return fmt.Errorf("error destroying resources with terraform targeting: %v", err)
+	//	}
+	//
+	//	err = deleteGroupResources(mm, allResourcesToDelete)
+	//	if err != nil {
+	//		return fmt.Errorf("error deleting resources from dynamo: %v", err)
+	//	}
+	//}
 
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Running command %s", command))
-	msg, err := utils.RunOSCommandOrFail(command)
-	if err != nil {
-		o := mm.Update(&group, "Status", "APPLY_FAILED")
-		if o.Err != nil {
-			return o.Err
-		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			return o.Err
-		}
-		return fmt.Errorf("Error running `worker group apply` for group with id %s: %s: %s", group.ID, err, *msg)
-	}
-
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("planning group Terraform")
-	// can't use a for loop because we need to do it in order
-	// plan networks all together
-	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "network", planId, payload)
-	if err != nil {
-		o := mm.Update(&group, "Status", "APPLY_FAILED")
-		if o.Err != nil {
-			return o.Err
-		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			return o.Err
-		}
-		return fmt.Errorf("Error running plan for network stacks in group with id %s: %s: %s", group.ID, err, *msg)
-	}
-
-	// plan clusters all together
-	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "cluster", planId, payload)
-	if err != nil {
-		o := mm.Update(&group, "Status", "APPLY_FAILED")
-		if o.Err != nil {
-			return o.Err
-		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			return o.Err
-		}
-		return fmt.Errorf("Error running plan for cluster stacks in group with id %s: %s: %s", group.ID, err, *msg)
-	}
-
-	// plan cluster grafana all together
-	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "cluster_grafana", planId, payload)
-	if err != nil {
-		o := mm.Update(&group, "Status", "APPLY_FAILED")
-		if o.Err != nil {
-			return o.Err
-		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			return o.Err
-		}
-		return fmt.Errorf("Error running plan for cluster_grafana stacks in group with id %s: %s: %s", group.ID, err, *msg)
-	}
-
-	// plan environments all together
-	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "environment", planId, payload)
-	if err != nil {
-		o := mm.Update(&group, "Status", "APPLY_FAILED")
-		if o.Err != nil {
-			return o.Err
-		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			return o.Err
-		}
-		return fmt.Errorf("Error running plan for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
-	}
-
-	// plan static environments all together
-	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "environment-static", planId, payload)
-	if err != nil {
-		o := mm.Update(&group, "Status", "APPLY_FAILED")
-		if o.Err != nil {
-			return o.Err
-		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			return o.Err
-		}
-		return fmt.Errorf("Error running plan for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
-	}
-
-	// plan environments all together
-	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "rds", planId, payload)
-	if err != nil {
-		o := mm.Update(&group, "Status", "APPLY_FAILED")
-		if o.Err != nil {
-			return o.Err
-		}
-		o = mm.Update(&group, "FailedReason", err.Error())
-		if o.Err != nil {
-			return o.Err
-		}
-		return fmt.Errorf("Error running plan for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
-	}
+	//// template with worker a second time, now that resources are destroyed
+	//err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
+	//if err != nil {
+	//	return fmt.Errorf("error templating terraform: %v", err)
+	//}
 	return nil
-}
-
-func plan(ctx context.Context, awsCfg aws.Config, group types.Group, stateBucketName string, execPath *string, roleToAssume *string, dirName string, planId string, payload Payload) error {
-	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
-	// /groups/groupId/network --> directoryPath
-	directories, _ := os.ReadDir(directoryPath)
-	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Planning all %ss", dirName))
-
-	// go routine setup stuff
-	wg := &sync.WaitGroup{}
-	errors := make(chan error, 0)
-
-	// run all the applies in parallel in each folder
-	for _, d := range directories {
-		wg.Add(1)
-		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Planning %s %s", dirName, d.Name()))
-		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
-		// /groups/groupId/network/network_resource_label_here/terraform files --> path
-		go func(dir os.DirEntry) {
-			defer wg.Done()
-			// plan terraform or return an error
-			err := terraform.PlanGroupTerraform(ctx, awsCfg, planId, stateBucketName, path, *execPath, roleToAssume)
-			if err != nil {
-				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
-				return
-			}
-		}(d)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errors)
-	}()
-
-	errs := make([]error, 0)
-	for err := range errors {
-		errs = append(errs, err)
-	}
-	if len(errs) > 0 {
-		err := fmt.Errorf("errors occurred with planning resources in group %s: %v", group.ResourceLabel, errs)
-		return err
-	}
-	return nil
+	//	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Applying terraform...")
+	//	out, err := terraform.ApplyTerraform(ctx, terraformDirectoryPath, *execPath, roleToAssume)
+	//	if err != nil {
+	//		return fmt.Errorf("error applying terraform: %v", err)
+	//
+	//	}
+	//
+	//	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Saving terraform outputs...")
+	//	err = handleTerraformOutputs(mm, group, out, cfg)
+	//	if err != nil {
+	//		return fmt.Errorf("error sa: %v", err)
+	//	}
+	//
+	//	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Templating Terraform with correct values")
+	//
+	//	command := fmt.Sprintf("/app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
+	//	if os.Getenv("IS_LOCAL") == "true" {
+	//		command = fmt.Sprintf("./app/worker group apply --group-id %s --table-region %s", group.ID, masterAcctRegion)
+	//	}
+	//
+	//	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Running command %s", command))
+	//	msg, err := utils.RunOSCommandOrFail(command)
+	//	if err != nil {
+	//		o := mm.Update(&group, "Status", "APPLY_FAILED")
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		o = mm.Update(&group, "FailedReason", err.Error())
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		return fmt.Errorf("Error running `worker group apply` for group with id %s: %s: %s", group.ID, err, *msg)
+	//	}
+	//
+	//	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("planning group Terraform")
+	//	// can't use a for loop because we need to do it in order
+	//	// plan networks all together
+	//	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "network", planId, payload)
+	//	if err != nil {
+	//		o := mm.Update(&group, "Status", "APPLY_FAILED")
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		o = mm.Update(&group, "FailedReason", err.Error())
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		return fmt.Errorf("Error running plan for network stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	//	}
+	//
+	//	// plan clusters all together
+	//	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "cluster", planId, payload)
+	//	if err != nil {
+	//		o := mm.Update(&group, "Status", "APPLY_FAILED")
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		o = mm.Update(&group, "FailedReason", err.Error())
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		return fmt.Errorf("Error running plan for cluster stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	//	}
+	//
+	//	// plan cluster grafana all together
+	//	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "cluster_grafana", planId, payload)
+	//	if err != nil {
+	//		o := mm.Update(&group, "Status", "APPLY_FAILED")
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		o = mm.Update(&group, "FailedReason", err.Error())
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		return fmt.Errorf("Error running plan for cluster_grafana stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	//	}
+	//
+	//	// plan environments all together
+	//	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "environment", planId, payload)
+	//	if err != nil {
+	//		o := mm.Update(&group, "Status", "APPLY_FAILED")
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		o = mm.Update(&group, "FailedReason", err.Error())
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		return fmt.Errorf("Error running plan for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	//	}
+	//
+	//	// plan static environments all together
+	//	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "environment-static", planId, payload)
+	//	if err != nil {
+	//		o := mm.Update(&group, "Status", "APPLY_FAILED")
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		o = mm.Update(&group, "FailedReason", err.Error())
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		return fmt.Errorf("Error running plan for environment stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	//	}
+	//
+	//	// plan environments all together
+	//	err = plan(ctx, awsCfg, group, stateBucketName, execPath, roleToAssume, "database", planId, payload)
+	//	if err != nil {
+	//		o := mm.Update(&group, "Status", "APPLY_FAILED")
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		o = mm.Update(&group, "FailedReason", err.Error())
+	//		if o.Err != nil {
+	//			return o.Err
+	//		}
+	//		return fmt.Errorf("Error running plan for database stacks in group with id %s: %s: %s", group.ID, err, *msg)
+	//	}
+	//	return nil
+	//}
+	//
+	//func plan(ctx context.Context, awsCfg aws.Config, group types.Group, stateBucketName string, execPath *string, roleToAssume *string, dirName string, planId string, payload Payload) error {
+	//	directoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), dirName)
+	//	// /groups/groupId/network --> directoryPath
+	//	directories, _ := os.ReadDir(directoryPath)
+	//	log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Planning all %ss", dirName))
+	//
+	//	// go routine setup stuff
+	//	wg := &sync.WaitGroup{}
+	//	errors := make(chan error, 0)
+	//
+	//	// run all the applies in parallel in each folder
+	//	for _, d := range directories {
+	//		wg.Add(1)
+	//		log.Debug().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg(fmt.Sprintf("Planning %s %s", dirName, d.Name()))
+	//		path, _ := filepath.Abs(filepath.Join(directoryPath, d.Name()))
+	//		// /groups/groupId/network/network_resource_label_here/terraform files --> path
+	//		go func(dir os.DirEntry) {
+	//			defer wg.Done()
+	//			// plan terraform or return an error
+	//			err := terraform.PlanGroupTerraform(ctx, awsCfg, planId, stateBucketName, path, *execPath, roleToAssume)
+	//			if err != nil {
+	//				errors <- fmt.Errorf("error for %s %s: %v", dirName, dir.Name(), err)
+	//				return
+	//			}
+	//		}(d)
+	//	}
+	//
+	//	go func() {
+	//		wg.Wait()
+	//		close(errors)
+	//	}()
+	//
+	//	errs := make([]error, 0)
+	//	for err := range errors {
+	//		errs = append(errs, err)
+	//	}
+	//	if len(errs) > 0 {
+	//		err := fmt.Errorf("errors occurred with planning resources in group %s: %v", group.ResourceLabel, errs)
+	//		return err
+	//	}
+	//	return nil
 }

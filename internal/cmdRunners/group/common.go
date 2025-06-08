@@ -47,31 +47,8 @@ func GetPayload() (*Payload, error) {
 	return &payload, nil
 }
 
-type GroupResources struct {
-	Networks []types.Network
-	Clusters []types.Cluster
-	Rds      []types.Rds
-}
-
-func getAllResourcesToDeleteByGroupId(mm *magicmodel.Operator, groupID string) (*GroupResources, error) {
-	resources := GroupResources{}
-	o := mm.WhereV3(true, &resources.Networks, "Group.ID", groupID).WhereV3(false, &resources.Networks, "MarkedForDeletion", true)
-	if o.Err != nil {
-		return nil, o.Err
-	}
-	o = mm.WhereV3(true, &resources.Clusters, "Group.ID", groupID).WhereV3(false, &resources.Clusters, "MarkedForDeletion", true)
-	if o.Err != nil {
-		return nil, o.Err
-	}
-	o = mm.WhereV3(true, &resources.Rds, "Group.ID", groupID).WhereV3(false, &resources.Rds, "MarkedForDeletion", true)
-	if o.Err != nil {
-		return nil, o.Err
-	}
-	return &resources, nil
-}
-
-func getAllResourcesForApplyTargetingByGroupId(mm *magicmodel.Operator, groupID string) (*GroupResources, error) {
-	resources := GroupResources{}
+func getAllResourcesForApplyTargetingByGroupId(mm *magicmodel.Operator, groupID string) (*utils.GroupResources, error) {
+	resources := utils.GroupResources{}
 	o := mm.WhereV2(false, &resources.Clusters, "Group.ID", groupID)
 	if o.Err != nil {
 		return nil, o.Err
@@ -84,8 +61,8 @@ func getAllResourcesForApplyTargetingByGroupId(mm *magicmodel.Operator, groupID 
 	return &resources, nil
 }
 
-func getAllResourcesByGroupId(mm *magicmodel.Operator, groupID string) (*GroupResources, error) {
-	resources := GroupResources{}
+func getAllResourcesByGroupId(mm *magicmodel.Operator, groupID string) (*utils.GroupResources, error) {
+	resources := utils.GroupResources{}
 	o := mm.WhereV2(false, &resources.Networks, "Group.ID", groupID)
 	if o.Err != nil {
 		return nil, o.Err
@@ -96,7 +73,7 @@ func getAllResourcesByGroupId(mm *magicmodel.Operator, groupID string) (*GroupRe
 		return nil, o.Err
 	}
 
-	o = mm.WhereV2(false, &resources.Rds, "Group.ID", groupID)
+	o = mm.WhereV2(false, &resources.Database, "Group.ID", groupID)
 	if o.Err != nil {
 		return nil, o.Err
 	}
@@ -104,7 +81,7 @@ func getAllResourcesByGroupId(mm *magicmodel.Operator, groupID string) (*GroupRe
 	return &resources, nil
 }
 
-func deleteResourcesFromDynamo(ctx context.Context, resources *GroupResources, mm *magicmodel.Operator, group types.Group, payload Payload, cfg aws.Config) error {
+func deleteResourcesFromDynamo(ctx context.Context, resources *utils.GroupResources, mm *magicmodel.Operator, cfg aws.Config) error {
 	for _, cluster := range resources.Clusters {
 		o := mm.SoftDelete(&cluster)
 		if o.Err != nil {
@@ -122,6 +99,7 @@ func deleteResourcesFromDynamo(ctx context.Context, resources *GroupResources, m
 			},
 		})
 		if err != nil {
+			// DeleteParameters does not fail with an error if parameters are missing, so no need to check fof NotFound error here
 			return err
 		}
 
@@ -147,7 +125,7 @@ func deleteResourcesFromDynamo(ctx context.Context, resources *GroupResources, m
 		}
 	}
 
-	for _, db := range resources.Rds {
+	for _, db := range resources.Database {
 		o := mm.SoftDelete(&db)
 		if o.Err != nil {
 			return o.Err
@@ -156,31 +134,7 @@ func deleteResourcesFromDynamo(ctx context.Context, resources *GroupResources, m
 	return nil
 }
 
-func getExactTerraformResourceNames(allResourcesToDelete *GroupResources, resources Resources) []string {
-	var terraformResourcesToDelete []string
-	for _, network := range allResourcesToDelete.Networks {
-		for _, r := range resources.Data["network"] {
-			replacedString := strings.Replace(r, "do_network_dot_resource_label", network.ResourceLabel, -1)
-			terraformResourcesToDelete = append(terraformResourcesToDelete, replacedString)
-		}
-	}
-	for _, cluster := range allResourcesToDelete.Clusters {
-		for _, r := range resources.Data["cluster"] {
-			replacedString := strings.Replace(r, "do_cluster_dot_resource_label", cluster.ResourceLabel, -1)
-			terraformResourcesToDelete = append(terraformResourcesToDelete, replacedString)
-		}
-	}
-
-	for _, rds := range allResourcesToDelete.Rds {
-		for _, r := range resources.Data["network"] {
-			replacedString := strings.Replace(r, "do_rds_dot_resource_label", rds.ResourceLabel, -1)
-			terraformResourcesToDelete = append(terraformResourcesToDelete, replacedString)
-		}
-	}
-	return terraformResourcesToDelete
-}
-
-func getExactTerraformResourceNamesForTargetApply(allResourcesToApply *GroupResources) []string {
+func getExactTerraformResourceNamesForTargetApply(allResourcesToApply *utils.GroupResources) []string {
 	var terraformResources []string
 	for _, network := range allResourcesToApply.Networks {
 		for _, r := range networkTargetResources {
@@ -199,10 +153,8 @@ func getExactTerraformResourceNamesForTargetApply(allResourcesToApply *GroupReso
 	return terraformResources
 }
 
-func deleteGroupResources(mm *magicmodel.Operator, allResourcesToDelete *GroupResources) error {
-	// delete each resources that we deleted above
+func deleteGroupResources(mm *magicmodel.Operator, allResourcesToDelete *utils.GroupResources) error {
 	for _, network := range allResourcesToDelete.Networks {
-		// loop through resources.Network and replace dot_whatever with the actual resource label
 		o := mm.SoftDelete(&network)
 		if o.Err != nil {
 			return o.Err
@@ -215,8 +167,8 @@ func deleteGroupResources(mm *magicmodel.Operator, allResourcesToDelete *GroupRe
 		}
 	}
 
-	for _, rds := range allResourcesToDelete.Rds {
-		o := mm.SoftDelete(&rds)
+	for _, Database := range allResourcesToDelete.Database {
+		o := mm.SoftDelete(&Database)
 		if o.Err != nil {
 			return o.Err
 		}
@@ -248,28 +200,6 @@ func runWorkerGroupApply(mm *magicmodel.Operator, group types.Group, jobId, mast
 	return nil
 }
 
-func runWorkerResourcesList(group types.Group, mm *magicmodel.Operator, jobId string) (*string, error) {
-	command := "/app/worker resources list"
-	if os.Getenv("IS_LOCAL") == "true" {
-		command = "./app/worker resources list"
-	}
-	msg, err := utils.RunOSCommandOrFail(command)
-	if err != nil {
-		group.Status = "APPLY_FAILED"
-		group.FailedReason = err.Error()
-		so := mm.Save(&group)
-		if so.Err != nil {
-			return nil, so.Err
-		}
-		if msg != nil {
-			return nil, fmt.Errorf("error running `worker group apply` for group with id %s: %s: %s", group.ID, err, *msg)
-		} else {
-			return nil, fmt.Errorf("error running `worker group apply` for group with id %s: %s", group.ID, err)
-		}
-	}
-	return msg, nil
-}
-
 func handleTerraformOutputs(mm *magicmodel.Operator, group types.Group, out map[string]tfexec.OutputMeta, cfg aws.Config) error {
 	resources, err := getAllResourcesByGroupId(mm, group.ID)
 	if err != nil {
@@ -295,8 +225,8 @@ func handleTerraformOutputs(mm *magicmodel.Operator, group types.Group, out map[
 		}
 	}
 
-	for _, r := range resources.Rds {
-		err = saveRdsOutputs(mm, out, r, cfg)
+	for _, r := range resources.Database {
+		err = saveDatabaseOutputs(mm, out, r, cfg)
 		if err != nil {
 			return err
 		}

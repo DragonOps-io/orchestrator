@@ -48,20 +48,6 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		roleToAssume = group.Account.CrossAccountRoleArn
 	}
 
-	// TODO: Not sure what this is needed for
-	//if roleToAssume != nil {
-	//	cfg, err = getCrossAccountConfig(ctx, *cfg, *roleToAssume, group.Account.AwsAccountId, group.Account.Region)
-	//	if err != nil {
-	//		group.Status = "DESTROY_FAILED"
-	//		group.FailedReason = err.Error()
-	//		so := mm.Save(&group)
-	//		if so.Err != nil {
-	//			return so.Err
-	//		}
-	//		return err
-	//	}
-	//}
-
 	if !isDryRun {
 		if os.Getenv("IS_LOCAL") == "true" {
 			os.Setenv("DRAGONOPS_TERRAFORM_DESTINATION", fmt.Sprintf("./groups/%s", group.ID))
@@ -108,7 +94,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		return err
 	}
 
-	err = deleteResourcesFromDynamo(ctx, resources, mm, group, payload, *cfg)
+	err = deleteResourcesFromDynamo(ctx, resources, mm, *cfg)
 	if err != nil {
 		group.Status = "DESTROY_FAILED"
 		group.FailedReason = err.Error()
@@ -176,6 +162,20 @@ func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm
 
 	terraformDirectoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), fmt.Sprintf("group/%s", group.ResourceLabel))
 
+	// generate KUBECONFIG per cluster - used in null_resources to verify ordering
+	clusters, err := utils.GetAllClustersByGroupId(mm, group.ID)
+	if err != nil {
+		return err
+	}
+	for _, cluster := range clusters {
+		cluster.StackName = fmt.Sprintf("%s-%s", cluster.Group.Name, cluster.Name)
+		_, err = terraform.GenerateKubeconfig(ctx, cfg, cluster.StackName, masterAcctRegion)
+		if err != nil {
+			return err
+		}
+	}
+
+	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Running terraform destroy...")
 	_, err = terraform.DestroyTerraform(ctx, terraformDirectoryPath, *execPath, roleToAssume)
 	if err != nil {
 		return err
