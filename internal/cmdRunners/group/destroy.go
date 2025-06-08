@@ -94,7 +94,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		return err
 	}
 
-	err = deleteResourcesFromDynamo(ctx, resources, mm, group, payload, *cfg)
+	err = deleteResourcesFromDynamo(ctx, resources, mm, *cfg)
 	if err != nil {
 		group.Status = "DESTROY_FAILED"
 		group.FailedReason = err.Error()

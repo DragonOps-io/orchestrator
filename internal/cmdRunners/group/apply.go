@@ -102,42 +102,8 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 }
 
 func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, group types.Group, execPath *string, roleToAssume *string, cfg aws.Config, payload Payload, masterAccount types.Account) error {
-	// When this doesn't work:
-	// * When a cluster is deleted but the subnets / vpc / something else isn't - we end up in a broken state where
-	// the provider data resources for the cluster auth and cluster details fail because the cluster doesn't exist anymore.
-	// We could add an API call in the worker to see if the cluster exists maybe, then delete provision based on that...
-
-	//msg, err := utils.RunWorkerResourcesList(group, payload.JobId)
-	//if err != nil {
-	//	// TODO
-	//	return err
-	//}
 
 	terraformDirectoryPath := filepath.Join(os.Getenv("DRAGONOPS_TERRAFORM_DESTINATION"), fmt.Sprintf("group/%s", group.ResourceLabel))
-	//var resources utils.Resources
-	//err = json.Unmarshal([]byte(*msg), &resources.Data)
-	//if err != nil {
-	//	// TODO
-	//	return err
-	//}
-	//
-	//terraformResourcesToDelete := utils.GetExactTerraformResourceNames(allResourcesToDelete, resources)
-	//
-	//if len(terraformResourcesToDelete) > 0 {
-	//	err = runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
-	//	if err != nil {
-	//		// TODO
-	//		return err
-	//	}
-	//
-	//	log.Info().Str("GroupID", group.ID).Str("JobId", payload.JobId).Msg("Destroying resources removed from config...")
-	//	err = terraform.DestroyTerraformTargets(ctx, terraformDirectoryPath, *execPath, terraformResourcesToDelete, roleToAssume)
-	//	if err != nil {
-	//		return fmt.Errorf("error destroying resources with terraform targeting: %v", err)
-	//	}
-	//
-
-	//}
 
 	err := runWorkerGroupApply(mm, group, payload.JobId, masterAcctRegion)
 	if err != nil {
@@ -157,7 +123,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		return fmt.Errorf("error retrieving resources to delete: %v", err)
 	}
 
-	err = deleteGroupResources(mm, allResourcesToDelete)
+	err = deleteResourcesFromDynamo(ctx, allResourcesToDelete, mm, cfg)
 	if err != nil {
 		return fmt.Errorf("error deleting resources from dynamo: %v", err)
 	}

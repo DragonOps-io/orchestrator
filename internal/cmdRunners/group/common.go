@@ -81,7 +81,7 @@ func getAllResourcesByGroupId(mm *magicmodel.Operator, groupID string) (*utils.G
 	return &resources, nil
 }
 
-func deleteResourcesFromDynamo(ctx context.Context, resources *utils.GroupResources, mm *magicmodel.Operator, group types.Group, payload Payload, cfg aws.Config) error {
+func deleteResourcesFromDynamo(ctx context.Context, resources *utils.GroupResources, mm *magicmodel.Operator, cfg aws.Config) error {
 	for _, cluster := range resources.Clusters {
 		o := mm.SoftDelete(&cluster)
 		if o.Err != nil {
@@ -99,6 +99,7 @@ func deleteResourcesFromDynamo(ctx context.Context, resources *utils.GroupResour
 			},
 		})
 		if err != nil {
+			// DeleteParameters does not fail with an error if parameters are missing, so no need to check fof NotFound error here
 			return err
 		}
 
@@ -153,9 +154,7 @@ func getExactTerraformResourceNamesForTargetApply(allResourcesToApply *utils.Gro
 }
 
 func deleteGroupResources(mm *magicmodel.Operator, allResourcesToDelete *utils.GroupResources) error {
-	// delete each resources that we deleted above
 	for _, network := range allResourcesToDelete.Networks {
-		// loop through resources.Network and replace dot_whatever with the actual resource label
 		o := mm.SoftDelete(&network)
 		if o.Err != nil {
 			return o.Err
