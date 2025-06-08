@@ -87,11 +87,12 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 
 	// TODO Delete OIDC repo entry from policy
 
-	ecrClient := ecr.NewFromConfig(*cfg)
-	err = DeleteECRRepository(ctx, ecrClient, app.Name, true)
-	if err != nil {
-		return err
-	}
+	// Need to have a flag for this or something.
+	//ecrClient := ecr.NewFromConfig(*cfg)
+	//err = DeleteECRRepository(ctx, ecrClient, app.Name, true)
+	//if err != nil {
+	//	return err
+	//}
 
 	o = mm.SoftDelete(&app)
 	if o.Err != nil {

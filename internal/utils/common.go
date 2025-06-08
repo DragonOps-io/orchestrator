@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/DragonOps-io/types"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -187,7 +188,6 @@ func CommonStartupTasks(ctx context.Context, mm *magicmodel.Operator, username s
 		return nil, nil, err
 	}
 
-	// get the doApiKey from secrets manager, not the payload
 	doApiKey, err := GetDoApiKeyFromSecretsManager(ctx, cfg, username)
 	if err != nil {
 		return nil, nil, err
@@ -201,6 +201,82 @@ func CommonStartupTasks(ctx context.Context, mm *magicmodel.Operator, username s
 	if !authResponse.IsValid {
 		return nil, nil, fmt.Errorf("the DragonOps api key provided is not valid. Please reach out to DragonOps support for help")
 	}
-	
+
 	return &accounts[0], &cfg, nil
+}
+
+type Resources struct {
+	Data map[string][]string
+}
+
+func RunWorkerResourcesList(group types.Group, jobId string) (*string, error) {
+	command := "/app/worker resources list"
+	if os.Getenv("IS_LOCAL") == "true" {
+		command = "./app/worker resources list"
+	}
+	msg, err := RunOSCommandOrFail(command)
+	if err != nil {
+		if msg != nil {
+			return nil, fmt.Errorf("error running `worker group apply` for group with id %s: %s: %s", group.ID, err, *msg)
+		} else {
+			return nil, fmt.Errorf("error running `worker group apply` for group with id %s: %s", group.ID, err)
+		}
+	}
+	return msg, nil
+}
+
+type GroupResources struct {
+	Networks []types.Network
+	Clusters []types.Cluster
+	Database []types.Database
+}
+
+func GetAllResourcesToDeleteByGroupId(mm *magicmodel.Operator, groupID string) (*GroupResources, error) {
+	resources := GroupResources{}
+	o := mm.WhereV3(true, &resources.Networks, "Group.ID", groupID).WhereV3(false, &resources.Networks, "MarkedForDeletion", true)
+	if o.Err != nil {
+		return nil, o.Err
+	}
+	o = mm.WhereV3(true, &resources.Clusters, "Group.ID", groupID).WhereV3(false, &resources.Clusters, "MarkedForDeletion", true)
+	if o.Err != nil {
+		return nil, o.Err
+	}
+	o = mm.WhereV3(true, &resources.Database, "Group.ID", groupID).WhereV3(false, &resources.Database, "MarkedForDeletion", true)
+	if o.Err != nil {
+		return nil, o.Err
+	}
+	return &resources, nil
+}
+
+func GetAllClustersByGroupId(mm *magicmodel.Operator, groupID string) ([]types.Cluster, error) {
+	var clusters []types.Cluster
+	o := mm.WhereV3(false, &clusters, "Group.ID", groupID)
+	if o.Err != nil {
+		return nil, o.Err
+	}
+	return clusters, nil
+}
+
+func GetExactTerraformResourceNames(allResourcesToDelete *GroupResources, resources Resources) []string {
+	var terraformResourcesToDelete []string
+	for _, network := range allResourcesToDelete.Networks {
+		for _, r := range resources.Data["network"] {
+			replacedString := strings.Replace(r, "do_network_dot_resource_label", network.ResourceLabel, -1)
+			terraformResourcesToDelete = append(terraformResourcesToDelete, replacedString)
+		}
+	}
+	for _, cluster := range allResourcesToDelete.Clusters {
+		for _, r := range resources.Data["cluster"] {
+			replacedString := strings.Replace(r, "do_cluster_dot_resource_label", cluster.ResourceLabel, -1)
+			terraformResourcesToDelete = append(terraformResourcesToDelete, replacedString)
+		}
+	}
+
+	for _, Database := range allResourcesToDelete.Database {
+		for _, r := range resources.Data["network"] {
+			replacedString := strings.Replace(r, "do_database_dot_resource_label", Database.ResourceLabel, -1)
+			terraformResourcesToDelete = append(terraformResourcesToDelete, replacedString)
+		}
+	}
+	return terraformResourcesToDelete
 }
