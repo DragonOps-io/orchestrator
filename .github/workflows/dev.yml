@@ -61,7 +61,8 @@ jobs:
         with:
           context: .
           tags: ${{ steps.login-ecr.outputs.registry }}/dev-orchestrator:${{ github.sha }},${{ steps.login-ecr.outputs.registry }}/dev-orchestrator:latest
-          file: dev.Dockerfile
+          file: Dockerfile
           ssh: default
           push: true
           provenance: false
+          build-args: WORKER_VERSION=latest,AWS_ACCOUNT_ID=851725405730
