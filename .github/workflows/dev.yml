@@ -65,4 +65,6 @@ jobs:
           ssh: default
           push: true
           provenance: false
-          build-args: WORKER_VERSION=latest,AWS_ACCOUNT_ID=851725405730
+          build-args: |
+            WORKER_VERSION=latest
+            AWS_ACCOUNT_ID=851725405730

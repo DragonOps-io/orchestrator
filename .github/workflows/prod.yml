@@ -79,4 +79,6 @@ jobs:
           ssh: default
           push: true
           provenance: false
-          build-args: WORKER_VERSION=${{ env.worker_tag }},AWS_ACCOUNT_ID=989911971741
+          build-args: |
+            WORKER_VERSION=${{ env.worker_tag }}
+            AWS_ACCOUNT_ID=989911971741
