@@ -66,7 +66,8 @@ jobs:
       - name: Get Latest Worker Tag
         id: worker-tag
         run: |
-          worker_tag=$(aws ecr describe-images --output json --repository-name dragonops-worker --query 'reverse(sort_by(imageDetails, &imagePushedAt))[:1].imageTags' --no-paginate | jq -r '.[0] | map(select(. | startswith("v"))) | first')
+          worker_tag=$(aws ecr describe-images --repository-name dragonops-worker --output json | jq -r '.imageDetails[] | select(.imageTags != null) | .imageTags[] as $tag | select($tag | test("^v")) | {tag: $tag, pushedAt: .imagePushedAt}' | jq -s 'sort_by(.pushedAt) | last.tag')
+          # worker_tag=$(aws ecr describe-images --output json --repository-name dragonops-worker --query 'reverse(sort_by(imageDetails, &imagePushedAt))[:1].imageTags' --no-paginate | jq -r '.[0] | map(select(. | startswith("v"))) | first')
           echo "worker_tag=$worker_tag" >> $GITHUB_ENV
 
       - name: Build and push
