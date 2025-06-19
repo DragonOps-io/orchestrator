@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.2
 
 require (
-	github.com/DragonOps-io/types v0.0.0-20250608110613-007227debd8f
+	github.com/DragonOps-io/types v0.0.0-20250619021444-931e1127e7fc
 	github.com/Ilios-LLC/magicmodel-go v0.0.0-20250522145903-d5a2cd7d0cbf
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.26.6
