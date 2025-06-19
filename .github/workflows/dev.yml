@@ -66,5 +66,5 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            WORKER_VERSION="dev-worker:latest"
+            WORKER_VERSION=dev-worker:latest
             AWS_ACCOUNT_ID=851725405730
