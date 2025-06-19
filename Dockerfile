@@ -1,6 +1,6 @@
 ARG WORKER_VERSION
 ARG AWS_ACCOUNT_ID
-FROM ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/dragonops-worker:${WORKER_VERSION} as worker
+FROM ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${WORKER_VERSION} as worker
 
 FROM alpine:3.18.3
 WORKDIR /app
