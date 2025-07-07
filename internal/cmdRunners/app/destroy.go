@@ -177,7 +177,7 @@ func formatWithWorkerAndDestroyAllEnvironments(ctx context.Context, masterAcctRe
 
 			err := utils.RunWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatus(app, env, "DESTROY_FAILED", mm, err.Error())
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "DESTROY_FAILED", mm, err.Error(), nil)
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 					return
@@ -188,7 +188,7 @@ func formatWithWorkerAndDestroyAllEnvironments(ctx context.Context, masterAcctRe
 
 			_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatus(app, env, "DESTROY_FAILED", mm, err.Error())
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "DESTROY_FAILED", mm, err.Error(), nil)
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, ue)
 				}
@@ -198,7 +198,7 @@ func formatWithWorkerAndDestroyAllEnvironments(ctx context.Context, masterAcctRe
 
 			log.Info().Str("AppID", app.ID).Msg("Terraform applied! Saving outputs...")
 
-			err = utils.UpdateSingleEnvironmentStatus(app, env, "DESTROYED", mm, "")
+			err = utils.UpdateSingleEnvironmentStatus(app, env, "DESTROYED", mm, "", nil)
 			if err != nil {
 				errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 				return

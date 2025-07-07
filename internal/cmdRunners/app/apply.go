@@ -45,7 +45,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 	masterAccount, cfg, err := utils.CommonStartupTasks(ctx, mm, payload.UserName)
 	if err != nil {
-		ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error())
+		ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error(), &payload.DeploymentId)
 		if ue != nil {
 			return ue
 		}
@@ -68,7 +68,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error())
+			ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error(), &payload.DeploymentId)
 			if ue != nil {
 				return ue
 			}
@@ -81,7 +81,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 		err = formatWithWorkerAndApply(ctx, masterAccount.AwsRegion, mm, app, appEnvToApply, execPath, cfg)
 		if err != nil {
-			ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error())
+			ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error(), &payload.DeploymentId)
 			if ue != nil {
 				return ue
 			}
@@ -92,7 +92,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			return err
 		}
 
-		err = utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLIED", mm, "")
+		err = utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLIED", mm, "", &payload.DeploymentId)
 		if err != nil {
 			return err
 		}

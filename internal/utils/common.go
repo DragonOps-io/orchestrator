@@ -133,7 +133,7 @@ func UpdateAllEnvironmentStatuses(app types.App, environments []string, status s
 	return nil
 }
 
-func UpdateSingleEnvironmentStatus(app types.App, envName, status string, mm *magicmodel.Operator, errMsg string) error {
+func UpdateSingleEnvironmentStatus(app types.App, envName, status string, mm *magicmodel.Operator, errMsg string, deploymentId *string) error {
 	if appEnv, exists := app.Environments[envName]; exists {
 		appEnv.Status = status
 		appEnv.FailedReason = errMsg
@@ -144,7 +144,7 @@ func UpdateSingleEnvironmentStatus(app types.App, envName, status string, mm *ma
 		}
 		// Only update the deployment status if the status is FAILED
 		if status == "APPLY_FAILED" {
-			ue := FindAndUpdateDeploymentStatus(app, envName, "FAILED", mm, errMsg)
+			ue := UpdateDeploymentStatus(*deploymentId, "FAILED", mm, errMsg)
 			if ue != nil {
 				return fmt.Errorf("error updating deployment status for env %s: %v", envName, ue)
 			}
@@ -218,7 +218,7 @@ func RunWorkerAppApply(mm *magicmodel.Operator, app types.App, appPath, envName,
 	log.Info().Str("AppID", app.ID).Msg(fmt.Sprintf("Templating terraform application files for environment %s", envName))
 	msg, err := RunOSCommandOrFail(command)
 	if err != nil {
-		ue := UpdateSingleEnvironmentStatus(app, envName, "APPLY_FAILED", mm, fmt.Errorf("Error running `worker app apply` with app with id %s and environment with name %s: %v - %v", app.ID, envName, err, msg).Error())
+		ue := UpdateSingleEnvironmentStatus(app, envName, "APPLY_FAILED", mm, fmt.Errorf("Error running `worker app apply` with app with id %s and environment with name %s: %v - %v", app.ID, envName, err, msg).Error(), nil)
 		if ue != nil {
 			return ue
 		}

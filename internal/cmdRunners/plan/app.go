@@ -186,7 +186,7 @@ func formatWithWorkerAndPlanApp(ctx context.Context, masterAcctRegion string, mm
 
 			err := utils.RunWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error())
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error(), nil)
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 					return
@@ -197,7 +197,7 @@ func formatWithWorkerAndPlanApp(ctx context.Context, masterAcctRegion string, mm
 
 			err = terraform.PlanAppTerraform(ctx, awsConfig, planId, stateBucketName, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
 			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error())
+				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error(), nil)
 				if ue != nil {
 					errors <- fmt.Errorf("error updating status for env %s: %v", env, ue)
 				}
@@ -207,7 +207,7 @@ func formatWithWorkerAndPlanApp(ctx context.Context, masterAcctRegion string, mm
 
 			log.Debug().Str("AppID", app.ID).Str("JobId", payload.JobId).Msg("Updating app status")
 
-			err = utils.UpdateSingleEnvironmentStatus(app, env, "APPLIED", mm, "")
+			err = utils.UpdateSingleEnvironmentStatus(app, env, "APPLIED", mm, "", nil)
 			if err != nil {
 				errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 				return
