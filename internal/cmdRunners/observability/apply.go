@@ -28,7 +28,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		Msg("Getting Master Account")
 
 	accounts := []types.Account{}
-	o := mm.WhereV2(false, &accounts, "IsMasterAccount", aws.Bool(true))
+	o := mm.WhereV4(false, &accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
 		return fmt.Errorf("Error when trying to retrieve master account: %s", o.Err)
 	}
@@ -220,7 +220,7 @@ func apply(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, account
 	}
 
 	var orchestratorNetwork []types.Network
-	o := mm.WhereV2(false, &orchestratorNetwork, "Name", aws.String("dragonops-orchestrator"))
+	o := mm.WhereV4(false, &orchestratorNetwork, "Name", aws.String("dragonops-orchestrator"))
 	if o.Err != nil {
 		return nil, o.Err
 	}

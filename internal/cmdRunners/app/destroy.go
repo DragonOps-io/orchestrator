@@ -25,11 +25,11 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		return fmt.Errorf("an error occurred when trying to find the item with id %s: %s", payload.AppID, o.Err)
 	}
 
-	appEnvironmentsToDestroy := payload.EnvironmentNames
+	appEnvsToDestroy := payload.EnvironmentNames
 
 	masterAccount, cfg, err := utils.CommonStartupTasks(ctx, mm, payload.UserName)
 	if err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, err.Error())
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvsToDestroy, "DESTROY_FAILED", mm, err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -47,7 +47,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
+			ue := utils.UpdateAllEnvironmentStatuses(app, appEnvsToDestroy, "DESTROY_FAILED", mm, o.Err.Error())
 			if ue != nil {
 				return ue
 			}
@@ -56,14 +56,17 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 
 		log.Info().Str("AppID", app.ID).Msg("Running terraform...")
 
-		err = formatWithWorkerAndDestroy(ctx, masterAccount.AwsRegion, mm, app, appEnvironmentsToDestroy, execPath)
+		err = formatWithWorkerAndDestroyAllEnvironments(ctx, masterAccount.AwsRegion, mm, app, appEnvsToDestroy, execPath)
 		if err != nil {
-			return err
+			ue := utils.UpdateAllEnvironmentStatuses(app, appEnvsToDestroy, "DESTROY_FAILED", mm, err.Error())
+			if ue != nil {
+				return ue
+			}
 		}
 	} else {
-		err = utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROYED", mm, "")
-		if err != nil {
-			return fmt.Errorf("error updating environment statuses to destroyed: %v", err)
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvsToDestroy, "DESTROYED", mm, "")
+		if ue != nil {
+			return ue
 		}
 	}
 
@@ -88,7 +91,73 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 	return nil
 }
 
-func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []string, execPath *string) error {
+func formatWithWorkerAndDestroy(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, env string, execPath *string) error {
+	//wg := &sync.WaitGroup{}
+	//errors := make(chan error, 0)
+	//
+	//for _, env := range environments {
+	//	wg.Add(1)
+	//
+	//	go func(e string) {
+	//		defer wg.Done()
+
+	var roleToAssume *string
+	// TODO how does cross-account work with this new env stuff?
+	//if env.Group.Account.CrossAccountRoleArn != nil {
+	//	roleToAssume = env.Group.Account.CrossAccountRoleArn
+	//}
+
+	appEnvPath := fmt.Sprintf("/apps/%s/%s", app.ID, env)
+
+	err := utils.RunWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
+	if err != nil {
+		//ue := utils.UpdateSingleEnvironmentStatus(app, env, "DESTROY_FAILED", mm, err.Error())
+		//if ue != nil {
+		//	errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
+		//	return
+		//}
+		//errors <- fmt.Errorf("error for env %s: %v", env, err)
+		return err
+	}
+
+	_, err = terraform.DestroyTerraform(ctx, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
+	if err != nil {
+		//ue := utils.UpdateSingleEnvironmentStatus(app, env, "DESTROY_FAILED", mm, err.Error())
+		//if ue != nil {
+		//	errors <- fmt.Errorf("error updating status for env %s: %v", env, ue)
+		//}
+		//errors <- fmt.Errorf("error for env %s: %v", env, err)
+		return err
+	}
+
+	log.Info().Str("AppID", app.ID).Msg("Terraform applied! Saving outputs...")
+
+	//err = utils.UpdateSingleEnvironmentStatus(app, env, "DESTROYED", mm, "")
+	//if err != nil {
+	//	//errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
+	//	return err
+	//}
+	//		return
+	//	}(env)
+	//}
+	//
+	//go func() {
+	//	wg.Wait()
+	//	close(errors)
+	//}()
+	//
+	//errs := make([]error, 0)
+	//for err := range errors {
+	//	errs = append(errs, err)
+	//}
+	//if len(errs) > 0 {
+	//	err := fmt.Errorf("errors occurred with destroying environments for app %s: %v", app.ResourceLabel, errs)
+	//	return err
+	//}
+	return nil
+}
+
+func formatWithWorkerAndDestroyAllEnvironments(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []string, execPath *string) error {
 	wg := &sync.WaitGroup{}
 	errors := make(chan error, 0)
 

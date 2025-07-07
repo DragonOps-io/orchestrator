@@ -21,7 +21,7 @@ func Destroy(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDr
 		Str("JobId", payload.JobId).
 		Msg("Beginning to observability destroy.")
 	var accounts []types.Account
-	o := mm.WhereV2(false, &accounts, "IsMasterAccount", aws.Bool(true))
+	o := mm.WhereV4(false, &accounts, "IsMasterAccount", aws.Bool(true))
 	if o.Err != nil {
 		log.Err(o.Err).Str("JobId", payload.JobId).Msg("Error finding MasterAccount")
 		return fmt.Errorf("Error when trying to retrieve master account: %s", o.Err)
@@ -211,7 +211,7 @@ func destroy(ctx context.Context, cfg aws.Config, mm *magicmodel.Operator, execP
 
 	// unset the outputs
 	var orchestratorNetwork []types.Network
-	o := mm.WhereV2(false, &orchestratorNetwork, "Name", aws.String("dragonops-orchestrator"))
+	o := mm.WhereV4(false, &orchestratorNetwork, "Name", aws.String("dragonops-orchestrator"))
 	if o.Err != nil {
 		log.Err(o.Err).Str("JobId", payload.JobId).Msg(o.Err.Error())
 		return o.Err

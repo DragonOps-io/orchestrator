@@ -15,7 +15,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"os"
 	"strings"
-	"sync"
 )
 
 type AppUrl string
@@ -28,6 +27,7 @@ var albZoneMap = map[string]string{
 	"us-west-2": "Z1H1FL5HABSF5",
 }
 
+// TODO: for ecs, do a terraform plan to see if the service will change -- if yes, don't mark the deployment - EventBridge will pick it up; if no, mark the deployment as failed/sucessful after terraform apply
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
 	log.Info().
 		Str("AppID", payload.AppID).
@@ -41,11 +41,15 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 
 	log.Info().Str("AppID", app.ID).Msg("Found app")
 
-	appEnvironmentsToApply := payload.EnvironmentNames
+	appEnvToApply := payload.EnvironmentName
 
 	masterAccount, cfg, err := utils.CommonStartupTasks(ctx, mm, payload.UserName)
 	if err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, err.Error())
+		ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error())
+		if ue != nil {
+			return ue
+		}
+		ue = utils.UpdateDeploymentStatus(payload.DeploymentId, "FAILED", mm, err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -64,18 +68,48 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToApply, "APPLY_FAILED", mm, err.Error())
+			ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error())
+			if ue != nil {
+				return ue
+			}
+			ue = utils.UpdateDeploymentStatus(payload.DeploymentId, "FAILED", mm, err.Error())
 			if ue != nil {
 				return ue
 			}
 			return err
 		}
 
-		err = formatWithWorkerAndApply(ctx, masterAccount.AwsRegion, mm, app, appEnvironmentsToApply, execPath, cfg)
+		err = formatWithWorkerAndApply(ctx, masterAccount.AwsRegion, mm, app, appEnvToApply, execPath, cfg)
+		if err != nil {
+			ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error())
+			if ue != nil {
+				return ue
+			}
+			ue = utils.UpdateDeploymentStatus(payload.DeploymentId, "FAILED", mm, err.Error())
+			if ue != nil {
+				return ue
+			}
+			return err
+		}
+
+		err = utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLIED", mm, "")
 		if err != nil {
 			return err
 		}
 	}
+
+	// For serverless apps, just mark as succeeded after terraform apply
+	// TODO: temporarily, for ecs also do the same thing
+	if app.SubType == "serverless" || (app.Environments[appEnvToApply].EcsEnabled != nil && *app.Environments[appEnvToApply].EcsEnabled) {
+		ue := utils.UpdateDeploymentStatus(payload.DeploymentId, "SUCCEEDED", mm, "")
+		if ue != nil {
+			return ue
+		}
+	}
+
+	//if app.Environments[appEnvToApply].EcsEnabled != nil && *app.Environments[appEnvToApply].EcsEnabled {
+	//	// for ecs, do a terraform plan to see if the service will change -- if yes, don't mark the deployment - EventBridge will pick it up; if no, mark the deployment as failed/sucessful after terraform apply
+	//}
 
 	queueParts := strings.Split(*app.AppSqsArn, ":")
 	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
@@ -100,83 +134,86 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, environments []string, execPath *string, awsCfg *aws.Config) error {
-	wg := &sync.WaitGroup{}
-	errors := make(chan error, 0)
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, env string, execPath *string, awsCfg *aws.Config) error {
+	//wg := &sync.WaitGroup{}
+	//errors := make(chan error, 0)
 
-	for _, env := range environments {
-		wg.Add(1)
+	//for _, env := range environments {
+	//wg.Add(1)
+	//
+	//go func(e string) {
+	//	defer wg.Done()
 
-		go func(e string) {
-			defer wg.Done()
+	var roleToAssume *string
+	// TODO how does cross-account work with this new env stuff?
+	// For server/job apps, we can get the account from the cluster
+	// For serverless apps, we can get the account from the network IF it's in a vpc, otherwise we don't have any account information...
+	// For static apps, we don't have any of that information, just an environment name...
 
-			var roleToAssume *string
-			// TODO how does cross-account work with this new env stuff?
-			// For server/job apps, we can get the account from the cluster
-			// For serverless apps, we can get the account from the network IF it's in a vpc, otherwise we don't have any account information...
-			// For static apps, we don't have any of that information, just an environment name...
+	//if env.Group.Account.CrossAccountRoleArn != nil {
+	//	roleToAssume = env.Group.Account.CrossAccountRoleArn
+	//}
 
-			//if env.Group.Account.CrossAccountRoleArn != nil {
-			//	roleToAssume = env.Group.Account.CrossAccountRoleArn
-			//}
+	appEnvPath := fmt.Sprintf("/apps/%s/%s", app.ID, env)
 
-			appEnvPath := fmt.Sprintf("/apps/%s/%s", app.ID, env)
-
-			err := utils.RunWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
-			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error())
-				if ue != nil {
-					errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
-					return
-				}
-				errors <- fmt.Errorf("error for env %s: %v", env, err)
-				return
-			}
-
-			var out map[string]tfexec.OutputMeta
-			out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
-			if err != nil {
-				ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error())
-				if ue != nil {
-					errors <- fmt.Errorf("error updating status for env %s: %v", env, ue)
-				}
-				errors <- fmt.Errorf("error for env %s: %v", env, err)
-				return
-			}
-
-			log.Info().Str("AppID", app.ID).Msg("Terraform applied! Saving outputs...")
-
-			err = handleAppEnvironmentOutputs(ctx, app, env, mm, out, awsCfg, albZoneMap)
-			o := mm.Save(&app)
-			if o.Err != nil {
-				errors <- fmt.Errorf("error updating status for env %s: %v", env, o.Err)
-				return
-			}
-
-			err = utils.UpdateSingleEnvironmentStatus(app, env, "APPLIED", mm, "")
-			if err != nil {
-				errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
-				return
-			}
-
-			log.Info().Str("AppID", app.ID).Msg("App updated!")
-			return
-		}(env)
+	err := utils.RunWorkerAppApply(mm, app, appEnvPath, env, masterAcctRegion)
+	if err != nil {
+		//ue := utils.UpdateSingleEnvironmentStatus(app, env, "APPLY_FAILED", mm, err.Error())
+		//if ue != nil {
+		//	//errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
+		//	//return
+		//}
+		return err
+		//errors <- fmt.Errorf("error for env %s: %v", env, err)
+		//return
 	}
 
-	go func() {
-		wg.Wait()
-		close(errors)
-	}()
-
-	errs := make([]error, 0)
-	for err := range errors {
-		errs = append(errs, err)
+	var out map[string]tfexec.OutputMeta
+	out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
+	if err != nil {
+		return err
+		//errors <- fmt.Errorf("error for env %s: %v", env, err)
+		//return
 	}
-	if len(errs) > 0 {
-		err := fmt.Errorf("errors occurred with applying environments for app %s: %v", app.ResourceLabel, errs)
+
+	log.Info().Str("AppID", app.ID).Msg("Terraform applied! Saving outputs...")
+
+	err = handleAppEnvironmentOutputs(ctx, app, env, mm, out, awsCfg, albZoneMap)
+	if err != nil {
 		return err
 	}
+	o := mm.Save(&app)
+	if o.Err != nil {
+		return o.Err
+		//errors <- fmt.Errorf("error updating status for env %s: %v", env, o.Err)
+		//return
+	}
+
+	//err = utils.UpdateSingleEnvironmentStatus(app, env, "APPLIED", mm, "")
+	//if err != nil {
+	//	return err
+	//	//errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
+	//	//return
+	//}
+
+	log.Info().Str("AppID", app.ID).Msg("App updated!")
+	//return
+	//}(env)
+	////}
+	//
+	//go func() {
+	//	wg.Wait()
+	//	close(errors)
+	//}()
+
+	//errs := make([]error, 0)
+	//for err := range errors {
+	//	errs = append(errs, err)
+	//}
+	//if len(errs) > 0 {
+	//	err := fmt.Errorf("errors occurred with applying environments for app %s: %v", app.ResourceLabel, errs)
+	//	return err
+	//}
 	return nil
 }
 
@@ -186,7 +223,7 @@ func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName st
 		//if r53Domains[di].AwsAccountId != nil {
 		// get the account that matches so that if it's not the master account we know and can search correctly
 		//var accounts []types.Account
-		//o := mm.WhereV2(false, &accounts, "AwsAccountId", *dnsAwsAccountId)
+		//o := mm.WhereV4(false, &accounts, "AwsAccountId", *dnsAwsAccountId)
 		//if o.Err != nil {
 		//	ue := utils.UpdateAllEnvironmentStatuses(app, environments, mm, err)
 		//	if ue != nil {

@@ -49,12 +49,12 @@ func GetPayload() (*Payload, error) {
 
 func getAllResourcesForApplyTargetingByGroupId(mm *magicmodel.Operator, groupID string) (*utils.GroupResources, error) {
 	resources := utils.GroupResources{}
-	o := mm.WhereV2(false, &resources.Clusters, "Group.ID", groupID)
+	o := mm.WhereV4(false, &resources.Clusters, "Group.ID", groupID)
 	if o.Err != nil {
 		return nil, o.Err
 	}
 
-	o = mm.WhereV2(false, &resources.Clusters, "Group.ID", groupID)
+	o = mm.WhereV4(false, &resources.Clusters, "Group.ID", groupID)
 	if o.Err != nil {
 		return nil, o.Err
 	}
@@ -63,17 +63,17 @@ func getAllResourcesForApplyTargetingByGroupId(mm *magicmodel.Operator, groupID 
 
 func getAllResourcesByGroupId(mm *magicmodel.Operator, groupID string) (*utils.GroupResources, error) {
 	resources := utils.GroupResources{}
-	o := mm.WhereV2(false, &resources.Networks, "Group.ID", groupID)
+	o := mm.WhereV4(false, &resources.Networks, "Group.ID", groupID)
 	if o.Err != nil {
 		return nil, o.Err
 	}
 
-	o = mm.WhereV2(false, &resources.Clusters, "Group.ID", groupID)
+	o = mm.WhereV4(false, &resources.Clusters, "Group.ID", groupID)
 	if o.Err != nil {
 		return nil, o.Err
 	}
 
-	o = mm.WhereV2(false, &resources.Database, "Group.ID", groupID)
+	o = mm.WhereV4(false, &resources.Database, "Group.ID", groupID)
 	if o.Err != nil {
 		return nil, o.Err
 	}

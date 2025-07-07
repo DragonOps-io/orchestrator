@@ -21,17 +21,17 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 		Str("AppID", payload.AppID).
 		Msg("Retrieving app to remove...")
 
+	appEnvsToDestroy := payload.EnvironmentNames
+
 	app := types.App{}
 	o := mm.Find(&app, payload.AppID)
 	if o.Err != nil {
 		return fmt.Errorf("an error occurred when trying to find the item with id %s: %s", payload.AppID, o.Err)
 	}
 
-	appEnvironmentsToDestroy := payload.EnvironmentNames
-
 	masterAccount, cfg, err := utils.CommonStartupTasks(ctx, mm, payload.UserName)
 	if err != nil {
-		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, err.Error())
+		ue := utils.UpdateAllEnvironmentStatuses(app, appEnvsToDestroy, "DESTROY_FAILED", mm, err.Error())
 		if ue != nil {
 			return ue
 		}
@@ -48,7 +48,7 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 		var execPath *string
 		execPath, err = terraform.PrepareTerraform(ctx)
 		if err != nil {
-			ue := utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROY_FAILED", mm, err.Error())
+			ue := utils.UpdateAllEnvironmentStatuses(app, appEnvsToDestroy, "DESTROY_FAILED", mm, err.Error())
 			if ue != nil {
 				return ue
 			}
@@ -57,12 +57,12 @@ func Remove(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDry
 
 		log.Info().Str("AppID", app.ID).Msg("Running terraform...")
 
-		err = formatWithWorkerAndDestroy(ctx, masterAccount.AwsRegion, mm, app, appEnvironmentsToDestroy, execPath)
+		err = formatWithWorkerAndDestroyAllEnvironments(ctx, masterAccount.AwsRegion, mm, app, appEnvsToDestroy, execPath)
 		if err != nil {
 			return err
 		}
 	} else {
-		err = utils.UpdateAllEnvironmentStatuses(app, appEnvironmentsToDestroy, "DESTROYED", mm, "")
+		err = utils.UpdateAllEnvironmentStatuses(app, appEnvsToDestroy, "DESTROYED", mm, "")
 		if err != nil {
 			return fmt.Errorf("error updating environment statuses to destroyed: %v", err)
 		}
