@@ -154,7 +154,7 @@ func UpdateSingleEnvironmentStatus(app types.App, envName, status string, mm *ma
 }
 
 func UpdateDeploymentStatus(deploymentId, status string, mm *magicmodel.Operator, errMsg string) error {
-	var foundDeployment *types.Deployment
+	var foundDeployment types.Deployment
 	o := mm.Find(&foundDeployment, deploymentId)
 	if o.Err != nil {
 		return fmt.Errorf("error retrieving deployment with id %s: %v", deploymentId, o.Err)
