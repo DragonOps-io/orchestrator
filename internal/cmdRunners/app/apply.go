@@ -107,7 +107,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		}
 	}
 
-	if app.Environments[appEnvToApply].EcsEnabled != nil && *app.Environments[appEnvToApply].EcsEnabled && hasECSChanges != nil && *hasECSChanges {
+	if app.Environments[appEnvToApply].EcsEnabled != nil && *app.Environments[appEnvToApply].EcsEnabled && hasECSChanges != nil && !*hasECSChanges {
 		ue := utils.UpdateDeploymentStatus(payload.DeploymentId, "SUCCEEDED", mm, "")
 		if ue != nil {
 			return ue
