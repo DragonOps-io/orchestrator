@@ -6,4 +6,5 @@ apps/
 app/
 observability
 tmp/
+.ccw
 test

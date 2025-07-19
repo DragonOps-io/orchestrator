@@ -5,6 +5,21 @@ DragonOps infrastructure. It is written in Golang and runs as an ECS task in the
 
 It is open source for visibility into how DragonOps works and what is being executed in client accounts.
 
+## Key Features
+
+### ECS Deployment Status Management
+The orchestrator includes intelligent ECS deployment status tracking that:
+- Analyzes Terraform plans to detect ECS service changes
+- Only marks deployments as SUCCEEDED if no ECS service deployment will be triggered
+- Leaves deployment status for lambda handling when ECS service changes are detected
+- Provides fail-safe fallback behavior when plan analysis is unavailable
+
+### Terraform Integration
+- Uses `terraform-exec` SDK for reliable Terraform operations
+- Supports cross-account role assumption
+- Handles plan analysis and output parsing
+- Includes comprehensive error handling and logging
+
 ## Local Development - DragonOps Devs
 If you are developing locally and plan to test in AWS, CI/CD will take care of all of the below.
 

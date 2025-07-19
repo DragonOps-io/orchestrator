@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hashicorp/terraform-exec/tfexec"
+	tfjson "github.com/hashicorp/terraform-json"
 	"os"
 	"strings"
 )
@@ -273,4 +274,90 @@ func DestroyTerraformTargetsPlan(ctx context.Context, stackPath string, execPath
 	}
 
 	return nil
+}
+
+// CheckForECSServiceChanges runs terraform plan and checks if there are any ECS service or task definition changes
+// that would trigger a new ECS deployment. Returns true if ECS changes are detected.
+func CheckForECSServiceChanges(ctx context.Context, stackPath string, execPath string, roleArn *string) (bool, error) {
+	tf, err := tfexec.NewTerraform(stackPath, execPath)
+	if err != nil {
+		return false, fmt.Errorf("error running NewTerraform: %s", err)
+	}
+
+	var initOptions []tfexec.InitOption
+	if roleArn != nil {
+		initOptions = append(initOptions, tfexec.BackendConfig(fmt.Sprintf("role_arn=%s", *roleArn)))
+	}
+
+	err = tf.Init(ctx, initOptions...)
+	if err != nil {
+		return false, fmt.Errorf("error running Init: %s", err)
+	}
+
+	// Create a temporary plan file
+	planFilePath := fmt.Sprintf("%s/ecs-check-plan.tfplan", stackPath)
+	defer func() {
+		os.Remove(planFilePath)
+	}()
+
+	// Run terraform plan
+	hasChanges, err := tf.Plan(ctx, tfexec.Out(planFilePath))
+	if err != nil {
+		return false, fmt.Errorf("error running Plan: %s", err)
+	}
+
+	// If no changes at all, no ECS changes
+	if !hasChanges {
+		return false, nil
+	}
+
+	// Parse the plan file to check for ECS changes
+	plan, err := tf.ShowPlanFile(ctx, planFilePath)
+	if err != nil {
+		return false, fmt.Errorf("error reading plan file: %s", err)
+	}
+
+	return hasECSResourceChanges(plan), nil
+}
+
+// hasECSResourceChanges analyzes the terraform plan to detect ECS-related changes
+// that would trigger a new deployment
+func hasECSResourceChanges(plan *tfjson.Plan) bool {
+	if plan == nil || plan.ResourceChanges == nil {
+		return false
+	}
+
+	// ECS resource types that would trigger a deployment when changed
+	ecsResourceTypes := map[string]bool{
+		"aws_ecs_service":         true,
+		"aws_ecs_task_definition": true,
+	}
+
+	for _, resourceChange := range plan.ResourceChanges {
+		if resourceChange == nil || resourceChange.Change == nil {
+			continue
+		}
+
+		// Check if this is an ECS resource type
+		if ecsResourceTypes[resourceChange.Type] {
+			// Check if this change would actually affect the resource
+			// (create, update, replace operations)
+			if resourceChange.Change.Actions != nil {
+				for _, action := range resourceChange.Change.Actions {
+					switch action {
+					case "create", "update", "replace":
+						return true
+					case "delete":
+						// Deletion alone doesn't trigger a new deployment
+						continue
+					case "no-op":
+						// No-op means no changes
+						continue
+					}
+				}
+			}
+		}
+	}
+
+	return false
 }

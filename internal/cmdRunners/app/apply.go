@@ -27,7 +27,6 @@ var albZoneMap = map[string]string{
 	"us-west-2": "Z1H1FL5HABSF5",
 }
 
-// TODO: for ecs, do a terraform plan to see if the service will change -- if yes, don't mark the deployment - EventBridge will pick it up; if no, mark the deployment as failed/sucessful after terraform apply
 func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryRun bool) error {
 	log.Info().
 		Str("AppID", payload.AppID).
@@ -56,6 +55,8 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 		return fmt.Errorf("error during common startup tasks: %v", err)
 	}
 
+	// Defaul to true so that for dry-runs we still mark the dpeloyment as succeeded
+	hasECSChanges := aws.Bool(true)
 	if !isDryRun {
 		if os.Getenv("IS_LOCAL") == "true" {
 			os.Setenv("DRAGONOPS_TERRAFORM_ARTIFACT", "./app/tmpl.tgz.age")
@@ -79,7 +80,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 			return err
 		}
 
-		err = formatWithWorkerAndApply(ctx, masterAccount.AwsRegion, mm, app, appEnvToApply, execPath, cfg)
+		hasECSChanges, err = formatWithWorkerAndApply(ctx, masterAccount.AwsRegion, mm, app, appEnvToApply, execPath, cfg, payload.DeploymentId)
 		if err != nil {
 			ue := utils.UpdateSingleEnvironmentStatus(app, appEnvToApply, "APPLY_FAILED", mm, err.Error(), &payload.DeploymentId)
 			if ue != nil {
@@ -99,17 +100,19 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	}
 
 	// For serverless apps, just mark as succeeded after terraform apply
-	// TODO: temporarily, for ecs also do the same thing
-	if app.SubType == "serverless" || (app.Environments[appEnvToApply].EcsEnabled != nil && *app.Environments[appEnvToApply].EcsEnabled) {
+	if app.SubType == "serverless" {
 		ue := utils.UpdateDeploymentStatus(payload.DeploymentId, "SUCCEEDED", mm, "")
 		if ue != nil {
 			return ue
 		}
 	}
 
-	//if app.Environments[appEnvToApply].EcsEnabled != nil && *app.Environments[appEnvToApply].EcsEnabled {
-	//	// for ecs, do a terraform plan to see if the service will change -- if yes, don't mark the deployment - EventBridge will pick it up; if no, mark the deployment as failed/sucessful after terraform apply
-	//}
+	if app.Environments[appEnvToApply].EcsEnabled != nil && *app.Environments[appEnvToApply].EcsEnabled && hasECSChanges != nil && *hasECSChanges {
+		ue := utils.UpdateDeploymentStatus(payload.DeploymentId, "SUCCEEDED", mm, "")
+		if ue != nil {
+			return ue
+		}
+	}
 
 	queueParts := strings.Split(*app.AppSqsArn, ":")
 	queueUrl := fmt.Sprintf("https://%s.%s.amazonaws.com/%s/%s", queueParts[2], queueParts[3], queueParts[4], queueParts[5])
@@ -134,7 +137,7 @@ func Apply(ctx context.Context, payload Payload, mm *magicmodel.Operator, isDryR
 	return nil
 }
 
-func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, env string, execPath *string, awsCfg *aws.Config) error {
+func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *magicmodel.Operator, app types.App, env string, execPath *string, awsCfg *aws.Config, deploymentId string) (*bool, error) {
 	//wg := &sync.WaitGroup{}
 	//errors := make(chan error, 0)
 
@@ -163,15 +166,39 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 		//	//errors <- fmt.Errorf("error updating status for env %s: %v", env, err)
 		//	//return
 		//}
-		return err
+		return nil, err
 		//errors <- fmt.Errorf("error for env %s: %v", env, err)
 		//return
+	}
+	hasECSChanges := false
+	// For ECS apps, check if terraform changes will trigger an ECS service deployment
+	if app.Environments[env].EcsEnabled != nil && *app.Environments[env].EcsEnabled {
+		appTerraformPath := fmt.Sprintf("%s/application", appEnvPath)
+		hasECSChanges, err = terraform.CheckForECSServiceChanges(ctx, appTerraformPath, *execPath, roleToAssume)
+		if err != nil {
+			log.Warn().
+				Str("AppID", app.ID).
+				Err(err).
+				Msg("Failed to check for ECS changes, marking deployment as succeeded")
+			// If we can't determine ECS changes, err on the side of caution and mark as succeeded
+			return nil, err
+		} else if !hasECSChanges {
+			// No ECS service changes detected, safe to mark as succeeded
+			log.Info().
+				Str("AppID", app.ID).
+				Msg("No ECS service changes detected, marking deployment as succeeded")
+		} else {
+			// ECS service changes detected, leave deployment status for lambda to handle
+			log.Info().
+				Str("AppID", app.ID).
+				Msg("ECS service changes detected, leaving deployment status for lambda to update")
+		}
 	}
 
 	var out map[string]tfexec.OutputMeta
 	out, err = terraform.ApplyTerraform(ctx, fmt.Sprintf("%s/application", appEnvPath), *execPath, roleToAssume)
 	if err != nil {
-		return err
+		return nil, err
 		//errors <- fmt.Errorf("error for env %s: %v", env, err)
 		//return
 	}
@@ -180,11 +207,11 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 
 	err = handleAppEnvironmentOutputs(ctx, app, env, mm, out, awsCfg, albZoneMap)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	o := mm.Save(&app)
 	if o.Err != nil {
-		return o.Err
+		return nil, o.Err
 		//errors <- fmt.Errorf("error updating status for env %s: %v", env, o.Err)
 		//return
 	}
@@ -214,7 +241,7 @@ func formatWithWorkerAndApply(ctx context.Context, masterAcctRegion string, mm *
 	//	err := fmt.Errorf("errors occurred with applying environments for app %s: %v", app.ResourceLabel, errs)
 	//	return err
 	//}
-	return nil
+	return &hasECSChanges, nil
 }
 
 func handleRoute53Domains(r53Domains []types.DomainNameConfig, cfOrAlbDnsName string, awsCfg *aws.Config, ctx context.Context, cfOrAlbZoneId string, appId string) error {

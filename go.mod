@@ -20,6 +20,7 @@ require (
 	github.com/hashicorp/go-version v1.6.0
 	github.com/hashicorp/hc-install v0.6.0
 	github.com/hashicorp/terraform-exec v0.19.0
+	github.com/hashicorp/terraform-json v0.17.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.8.0
 	k8s.io/client-go v0.33.1
@@ -54,7 +55,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/terraform-json v0.17.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
